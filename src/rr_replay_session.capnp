@@ -40,7 +40,8 @@ using Fd = Int32;
 
 using Pid = Int32;
 
-# Key by which to look up shared data
+# Key by which to look up shared data. First iteration is basically
+# (uintptr_t)foo where foo is a pointer of type T
 using Reference = UInt64;
 
 struct KernelMapping {
