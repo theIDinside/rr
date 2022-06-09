@@ -518,6 +518,7 @@ set(RR_SOURCES
   src/remote_code_ptr.cc
   src/ReplayCommand.cc
   src/ReplaySession.cc
+  src/PersistentCheckpointing.cc
   src/replay_syscall.cc
   src/ReplayTask.cc
   src/ReplayTimeline.cc
@@ -537,8 +538,11 @@ set(RR_SOURCES
   src/TraceStream.cc
   src/VirtualPerfCounterMonitor.cc
   src/util.cc
+  src/stream_util.cc
   src/WaitStatus.cc
+  src/rr_replay_session.capnp.c++
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
+  #src/rr_replay_session.capnp.c++
   ${BLAKE_ARCH_DIR}/blake2b.c
 )
 
