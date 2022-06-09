@@ -225,61 +225,61 @@ struct PerfCounters {
 }
 
 struct Task {
-  scratchPtr @0 :RemotePtr;
-  scratchSize @1 :UInt64;
-  deschedFdChild @2 :Fd;
-  clonedFileDataFdChild @3 :Fd;
-  clonedFileDataFname @4 :Data;
+  scratchPtr                    @0 :RemotePtr;
+  scratchSize                   @1 :UInt64;
+  deschedFdChild                @2 :Fd;
+  clonedFileDataFdChild         @3 :Fd;
+  clonedFileDataFname           @4 :Data;
   rseqState :group {
-    ptr @5 :RemotePtr;
-    abortPrefixSignature @6 :UInt32;
+    ptr                         @5 :RemotePtr;
+    abortPrefixSignature        @6 :UInt32;
   }
-  hpc @7 :PerfCounters;
-  tid @8 :Pid;
-  recTid @9 :Pid;
-  ownNamespaceRecTid @10 :Pid;
-  syscallbufSize @11 :UInt64;
-  syscallbufChild @12 :RemotePtr;
-  preloadGlobals @13 :RemotePtr;
-  threadLocals @14 :Data;
+  hpc                           @7 :PerfCounters;
+  tid                           @8 :Pid;
+  recTid                        @9 :Pid;
+  ownNamespaceRecTid            @10 :Pid;
+  syscallbufSize                @11 :UInt64;
+  syscallbufChild               @12 :RemotePtr;
+  preloadGlobals                @13 :RemotePtr;
+  threadLocals                  @14 :Data;
   # protected
-  serial @15 :UInt32;
-  as @16 :AddressSpace;
-  fds @17 :FdTable;
-  prname @18 :Data;
-  ticks @19 :Ticks;
-  registers @20 :Registers;
-  addressOfLastExecutionResume @21 :RemotePtr;
-  howLastExecutionResumed @22 :ResumeRequest;
-  lastResumeOrigCx @23 :UInt64;
-  singlesteppingInstruction @24 :TrappedInstruction;
-  didSetBreakpointAfterCpuid @25 :Bool;
-  isStopped @26 :Bool;
-  seccompBpfEnabled @27 :Bool;
-  detectedUnexpectedExit @28 :Bool;
-  registersDirty @29 :Bool;
-  origSyscallnoDirty @30 :Bool;
-  extraRegisters @31 :ExtraRegisters;
-  extraRegistersKnown @32 :Bool;
-  tg @33 :ThreadGroup;
-  threadAreas @34 :List(Data);
-  topOfStack @35 :RemotePtr;
-  waitStatus @36 :Int32;
-  pendingSiginfo @37 :Data;
-  seenPtraceExitEvent @38 :Bool;
-  handledPtraceExitEvent @39 :Bool;
-  expectingPtraceInterruptStop @40 :Int32;
-  wasReaped @41 :Bool;
-  forgotten @42 :Bool;
+  serial                        @15 :UInt32;
+  as                            @16 :AddressSpace;
+  fds                           @17 :FdTable;
+  prname                        @18 :Data;
+  ticks                         @19 :Ticks;
+  registers                     @20 :Registers;
+  addressOfLastExecutionResume  @21 :RemotePtr;
+  howLastExecutionResumed       @22 :ResumeRequest;
+  lastResumeOrigCx              @23 :UInt64;
+  singlesteppingInstruction     @24 :TrappedInstruction;
+  didSetBreakpointAfterCpuid    @25 :Bool;
+  isStopped                     @26 :Bool;
+  seccompBpfEnabled             @27 :Bool;
+  detectedUnexpectedExit        @28 :Bool;
+  registersDirty                @29 :Bool;
+  origSyscallnoDirty            @30 :Bool;
+  extraRegisters                @31 :ExtraRegisters;
+  extraRegistersKnown           @32 :Bool;
+  tg                            @33 :ThreadGroup;
+  threadAreas                   @34 :List(Data);
+  topOfStack                    @35 :RemotePtr;
+  waitStatus                    @36 :Int32;
+  pendingSiginfo                @37 :Data;
+  seenPtraceExitEvent           @38 :Bool;
+  handledPtraceExitEvent        @39 :Bool;
+  expectingPtraceInterruptStop  @40 :Int32;
+  wasReaped                     @41 :Bool;
+  forgotten                     @42 :Bool;
 
-  selfReferenceValue @43 :Reference; # Identifier we use for this task. It is the equivalent of (uintptr_t)this
+  selfReferenceValue            @43 :Reference; # Identifier we use for this task. It is the equivalent of (uintptr_t)this
 }
 
 # represents the key value pair in std::map<uintptr_t, FdTable::shr_ptr>
 struct ClonedFd {
-  ptr @0 :UInt64;
-  fdTablePtr @1 :FdTable;
-  taskSet @2 :List(Reference); # std::set<Task*>
+  ptr         @0 :UInt64;
+  fdTablePtr  @1 :FdTable;
+  taskSet     @2 :List(Reference); # std::set<Task*>
 }
 
 using ClonedFdTables = List(ClonedFd);
@@ -290,17 +290,21 @@ struct CapturedMemory {
 }
 
 struct AddressSpaceClone {
-  cloneLeader @0 :Reference;            # Task*
-  cloneLeaderState @1 :CapturedState;
-  memberStates @2 :List(CapturedState);
-  capturedMemory @3 :List(CapturedMemory);
+  cloneLeader       @0 :Reference;            # Task*
+  cloneLeaderState  @1 :CapturedState;
+  memberStates      @2 :List(CapturedState);
+  capturedMemory    @3 :List(CapturedMemory);
+}
+
+struct ReadersPosition {
+  events    @0 :UInt64;
+  rawData   @1 :UInt64;
+  mmaps     @2 :UInt64;
+  tasks     @3 :UInt64;
 }
 
 struct CloneCompletion {
-  addressSpaces @0 :List(AddressSpaceClone);
-  clonedFdTables @1 :ClonedFdTables;
-
-  tasksData @2 :List(Task);
-  threadGroupsData @3 :List(ThreadGroup);
-  addressSpaceData @4 :List(AddressSpace);
+  addressSpaces         @0 :List(AddressSpaceClone);
+  clonedFdTables        @1 :ClonedFdTables;
+  readersPosition       @2 :ReadersPosition; # Sub stream positions in the trace files.
 }
