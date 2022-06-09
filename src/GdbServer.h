@@ -27,6 +27,12 @@ class GdbServer {
                                               const std::vector<std::string>&);
   friend std::string invoke_info_checkpoints(GdbServer&, Task*,
                                              const std::vector<std::string>&);
+  friend std::string invoke_write_checkpoints(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
+  friend std::string invoke_info_written_checkpoints(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
+  friend std::string invoke_load_checkpoint(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
 
 public:
   struct Target {
@@ -252,6 +258,7 @@ private:
       }
     }
     Checkpoint() : is_explicit(NOT_EXPLICIT) {}
+
     ReplayTimeline::Mark mark;
     TaskUid last_continue_tuid;
     Explicit is_explicit;

@@ -1,9 +1,13 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "GdbCommand.h"
-
+#include "EmuFs.h"
+#include "GdbServer.h"
 #include "ReplayTask.h"
+#include "ScopedFd.h"
 #include "log.h"
+#include <fcntl.h>
+#include <string>
 
 using namespace std;
 
@@ -159,6 +163,36 @@ static SimpleGdbCommand info_checkpoints(
   "info checkpoints",
   "list all checkpoints created with the 'checkpoint' command",
   invoke_info_checkpoints);
+
+string invoke_load_checkpoint(GdbServer& gdb_server, Task*, const vector<string>&) {
+  return "test function not implemented";
+}
+
+static SimpleGdbCommand load_checkpoint(
+  "load-serialized-checkpoint",
+  "deserializes a checkpoint",
+  invoke_load_checkpoint);
+
+
+string invoke_write_checkpoints(GdbServer& gdb_server, Task*,
+                                const vector<string>&) {
+  return "test function not implemented";
+}
+
+static SimpleGdbCommand write_checkpoints(
+    "write-checkpoints",
+    "Serialize all checkpoints created with the 'checkpoint' command",
+    invoke_write_checkpoints);
+
+string invoke_info_written_checkpoints(GdbServer&, Task*,
+                                       const vector<string>&) {
+  return "test function not implemented";
+}
+
+static SimpleGdbCommand info_written_checkpoints(
+    "info-written-checkpoints",
+    "list all checkpoints written to file by the 'write checkpoints' command",
+    invoke_info_written_checkpoints);
 
 /*static*/ void GdbCommand::init_auto_args() {
   checkpoint.add_auto_arg("rr-where");
