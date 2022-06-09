@@ -87,6 +87,8 @@ public:
     return *this;
   }
 
+  void set_fd_offset(uint64_t fd_offset);
+
 protected:
   bool refill_buffer();
 
