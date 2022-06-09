@@ -157,7 +157,8 @@ private:
 class ReplaySession : public Session {
 public:
   typedef std::shared_ptr<ReplaySession> shr_ptr;
-
+  friend void serialize_clone_completion(ReplaySession& cloned_session);
+  friend void deserialize(ReplaySession& dest, int fd);
   ~ReplaySession();
 
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,
@@ -255,6 +256,11 @@ public:
    * by 'dir', or the latest trace if 'dir' is not supplied.
    */
   static shr_ptr create(const std::string& dir, const Flags& flags);
+
+  // todo(simon): this should in it's final form return a ReplaySession in
+  // it's partially initialized state, according to Roc
+  // opened_checkpoint_fd is the file descriptor for opened file representing the serialized checkpoint.
+  static shr_ptr load_checkpoint(const std::string& trace_dir, ScopedFd& opened_checkpoint_fd, const Flags& flags);
 
   struct StepConstraints {
     explicit StepConstraints(RunCommand command)
