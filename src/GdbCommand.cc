@@ -164,7 +164,7 @@ static SimpleGdbCommand info_checkpoints(
   "list all checkpoints created with the 'checkpoint' command",
   invoke_info_checkpoints);
 
-string invoke_load_checkpoint(GdbServer& gdb_server, Task*, const vector<string>&) {
+string invoke_load_checkpoint(GdbServer&, Task*, const vector<string>&) {
   return "test function not implemented";
 }
 
@@ -174,7 +174,7 @@ static SimpleGdbCommand load_checkpoint(
   invoke_load_checkpoint);
 
 
-string invoke_write_checkpoints(GdbServer& gdb_server, Task*,
+string invoke_write_checkpoints(GdbServer&, Task*,
                                 const vector<string>&) {
   return "test function not implemented";
 }
