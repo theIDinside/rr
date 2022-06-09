@@ -29,16 +29,7 @@ using namespace std;
 
 namespace rr {
 
-struct Session::CloneCompletion {
-  struct AddressSpaceClone {
-    Task* clone_leader;
-    Task::CapturedState clone_leader_state;
-    vector<Task::CapturedState> member_states;
-    vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
-  };
-  vector<AddressSpaceClone> address_spaces;
-  Task::ClonedFdTables cloned_fd_tables;
-};
+
 
 Session::Session()
     : tracee_socket(make_shared<ScopedFd>()),
