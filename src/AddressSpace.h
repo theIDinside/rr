@@ -148,6 +148,7 @@ public:
   bool is_stack() const { return fsname().find("[stack") == 0; }
   bool is_vvar() const { return fsname() == "[vvar]"; }
   bool is_vsyscall() const { return fsname() == "[vsyscall]"; }
+  bool is_executable() const { return (prot() & PROT_EXEC) != 0; }
 
   struct stat fake_stat() const {
     struct stat fake_stat;
