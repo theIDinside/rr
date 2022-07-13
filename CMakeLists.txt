@@ -540,7 +540,7 @@ set(RR_SOURCES
   src/util.cc
   src/stream_util.cc
   src/WaitStatus.cc
-  src/rr_replay_session.capnp.c++
+  src/rr_pcp.capnp.c++
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
   #src/rr_replay_session.capnp.c++
   ${BLAKE_ARCH_DIR}/blake2b.c
