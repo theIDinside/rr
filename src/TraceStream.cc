@@ -1040,6 +1040,7 @@ KernelMapping TraceReader::read_mapped_region(MappedData* data, bool* found,
       const auto& fds = map.getExtraFds();
       for (size_t i = 0; i < fds.size(); ++i) {
         const auto& f = fds[i];
+        printf("Extra fd: { tid: %d, fd: %d }\n", f.getTid(), f.getFd());
         extra_fds->push_back({ f.getTid(), f.getFd() });
       }
     }
@@ -1635,6 +1636,47 @@ uint64_t TraceReader::xcr0() const {
     return 3;
   }
   return (uint64_t(record->out.edx) << 32) | record->out.eax;
+}
+
+void TraceReader::forward_to(FrameTime event_number) {
+  uint32_t evt_end = event_number;
+  TraceFrame validate_frame;
+  while (!at_end()) {
+    auto frame = read_frame();
+    validate_frame = frame;
+    if (evt_end - 1 == frame.time()) {
+      if(!(validate_frame.time() == event_number - 1)) {
+        FATAL() << "Forwarding to event " << event_number << " failed. Reached " << validate_frame.time();
+      }
+      return;
+    }
+    if (frame.time() < evt_end) {
+      if (frame.event().type() == EV_SYSCALLBUF_FLUSH) {
+        auto buf = read_raw_data();
+      }
+      while (true) {
+        TraceReader::MappedData data;
+        bool found;
+        KernelMapping km = read_mapped_region(&data, &found, TraceReader::DONT_VALIDATE);
+        if (!found) {
+          break;
+        }
+      }
+      TraceReader::RawDataMetadata data;
+      while (read_raw_data_metadata_for_frame(data)) {
+      }
+    } else {
+      while (true) {
+        TraceReader::MappedData data;
+        KernelMapping km = read_mapped_region(&data, nullptr, TraceReader::DONT_VALIDATE);
+        if (km.size() == 0) {
+          break;
+        }
+      }
+      TraceReader::RawDataMetadata data;
+      while (read_raw_data_metadata_for_frame(data)) { }
+    }
+  }
 }
 
 } // namespace rr
