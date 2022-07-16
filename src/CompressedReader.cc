@@ -214,9 +214,4 @@ uint64_t CompressedReader::compressed_bytes() const {
   return lseek(*fd, 0, SEEK_END);
 }
 
-void CompressedReader::set_fd_offset(uint64_t fd_offset)  {
-  DEBUG_ASSERT(fd_offset <= buffer.size());
-  this->fd_offset = fd_offset;
-}
-
 } // namespace rr

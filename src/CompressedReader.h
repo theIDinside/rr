@@ -3,6 +3,7 @@
 #ifndef RR_COMPRESSED_READER_H_
 #define RR_COMPRESSED_READER_H_
 
+#include <cstdint>
 #include <pthread.h>
 #include <stdint.h>
 
@@ -86,8 +87,6 @@ public:
     }
     return *this;
   }
-
-  void set_fd_offset(uint64_t fd_offset);
 
 protected:
   bool refill_buffer();
