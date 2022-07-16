@@ -7,6 +7,7 @@
 #include <vector>
 #include <unordered_map>
 
+#include "SerializedCheckpoint.h"
 #include "preload/preload_interface.h"
 
 #include "AddressSpace.h"
@@ -132,6 +133,7 @@ class Task {
   friend class Session;
   friend class RecordSession;
   friend class ReplaySession;
+  friend SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest, ScopedFd& fd);
 
 public:
   typedef std::vector<WatchConfig> DebugRegs;
@@ -953,6 +955,12 @@ public:
   void os_exec(SupportedArch arch, std::string filename);
   void os_exec_stub(SupportedArch arch) {
       os_exec(arch, find_exec_stub(arch));
+  }
+
+  void new_os_exec(SupportedArch exec_arch, std::string filename);
+
+  void new_os_exec_stub(SupportedArch arch) {
+    new_os_exec(arch, find_exec_stub(arch));
   }
 
   /**

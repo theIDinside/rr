@@ -14,6 +14,7 @@
 #include "ReplaySession.h"
 #include "ReplayTask.h"
 #include "ReturnAddressList.h"
+#include "SerializedCheckpoint.h"
 #include "TraceFrame.h"
 
 namespace rr {
@@ -73,6 +74,10 @@ public:
     const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
 
     FrameTime time() const { return ptr->proto.key.trace_time; }
+
+    // XXX re-write, so instead of returning internal, return the data we then request from internal
+    //  in ser/deser work of checkpoints.
+    std::shared_ptr<InternalMark> get_internal() { return ptr; }
 
   private:
     friend class ReplayTimeline;
@@ -317,6 +322,11 @@ private:
     ProtoMark(const MarkKey& key, ReplayTask* t)
         : key(key), regs(t->regs()), return_addresses(ReturnAddressList(t)) {}
     ProtoMark(const MarkKey& key) : key(key) {}
+    ProtoMark(const SerializedCheckpoint& cp)
+        : key{ cp.key.trace_time, cp.key.ticks,
+               ReplayStepKey{ (ReplayTraceStepType)(cp.key.step_key) } },
+          regs{ cp.regs },
+          return_addresses{ cp.return_addresses } {}
 
     bool equal_states(ReplaySession& session) const;
 
@@ -331,6 +341,17 @@ private:
    * of two Marks.
    */
   struct InternalMark {
+    InternalMark(ReplayTimeline* owner, Ticks ticks_at_event_start, ReplayTask* task, const MarkKey& key) : owner(owner),
+          proto(key),
+          ticks_at_event_start(ticks_at_event_start),
+          checkpoint_refcount(0),
+          singlestep_to_next_mark_no_signal(false) {
+      if(task) {
+        proto = ProtoMark(key, task);
+        extra_regs = task->extra_regs();
+      }
+    }
+
     InternalMark(ReplayTimeline* owner, ReplaySession& session,
                  const MarkKey& key)
         : owner(owner),
@@ -528,6 +549,13 @@ private:
    * accelerate a sequence of reverse singlestep operations.
    */
   Mark reverse_exec_short_checkpoint;
+
+public:
+  // XXX re-write + remove/rewrite SerializedCheckpoint
+  Mark mark_from_data(SerializedCheckpoint cp);
+  void register_explicit_checkpoint(Mark& m);
+  // XXX re-write (possibly by moving MarkKey et al out of ReplayTimeline as private classes).
+  std::shared_ptr<InternalMark> mark_at(const ReplayTimeline::MarkKey& key);
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);

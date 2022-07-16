@@ -15,6 +15,7 @@
 #include "Task.h"
 #include "fast_forward.h"
 
+#include "SerializedCheckpoint.h"
 struct syscallbuf_hdr;
 
 namespace rr {
@@ -157,8 +158,10 @@ private:
 class ReplaySession : public Session {
 public:
   typedef std::shared_ptr<ReplaySession> shr_ptr;
-  friend void serialize_clone_completion(ReplaySession& cloned_session);
-  friend void deserialize(ReplaySession& dest, int fd);
+  friend void serialize_clone_completion(ReplaySession& cloned_session,
+                                         const std::string& file,
+                                         const SerializedCheckpoint& cp);
+  friend SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest, ScopedFd& fd);
   ~ReplaySession();
 
   virtual Task* new_task(pid_t tid, pid_t rec_tid, uint32_t serial,

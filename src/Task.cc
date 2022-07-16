@@ -2566,7 +2566,7 @@ void Task::copy_state(const CapturedState& state) {
     }
   }
   preload_globals = state.preload_globals;
-  ASSERT(this, as->thread_locals_tuid() != tuid());
+  // ASSERT(this, as->thread_locals_tuid() != tuid());
   memcpy(&thread_locals, &state.thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
   // The scratch buffer (for now) is merely a private mapping in
   // the remote task.  The CoW copy made by fork()'ing the
@@ -3893,6 +3893,66 @@ void Task::os_exec(SupportedArch exec_arch, std::string filename)
   // Restore any memory if required. We need to do this through memory_task,
   // since the new task is now on the new address space. Do it now because
   // later we may try to unmap this task's syscallbuf.
+  if (memory_task != this) {
+    memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
+                           saved_data.size());
+  }
+}
+
+void Task::new_os_exec(SupportedArch exec_arch, std::string filename) {
+  // Setup memory and registers for the execve call. We may not have to save
+  // the old values since they're going to be wiped out by execve. We can
+  // determine this by checking if this address space has any tasks with a
+  // different tgid.
+  Task* memory_task = this;
+
+  // Old data if required
+  std::vector<uint8_t> saved_data;
+
+  // Set up everything
+  Registers regs = this->regs();
+  regs.set_ip(vm()->traced_syscall_ip());
+  remote_ptr<void> remote_mem = floor_page_size(regs.sp());
+
+  // Determine how much memory we'll need
+  size_t filename_size = filename.size() + 1;
+  size_t total_size = filename_size + sizeof(size_t);
+  if (memory_task != this) {
+    saved_data = read_mem(remote_mem.cast<uint8_t>(), total_size);
+  }
+
+  write_mem(remote_mem.cast<size_t>(), size_t(0));
+  regs.set_arg2(remote_mem);
+  regs.set_arg3(remote_mem);
+  remote_ptr<void> filename_addr = remote_mem + sizeof(size_t);
+  write_bytes_helper(filename_addr, filename_size, filename.c_str());
+  regs.set_arg1(filename_addr);
+
+  int expect_syscallno = syscall_number_for_execve(arch());
+  regs.set_syscallno(expect_syscallno);
+  regs.set_original_syscallno(expect_syscallno);
+  set_regs(regs);
+
+  LOG(debug) << "Beginning execve" << this->regs();
+  enter_syscall();
+  ASSERT(this, !stop_sig()) << "exec failed on entry";
+
+  pid_t tgid = real_tgid();
+  __ptrace_cont(this, RESUME_SYSCALL, arch(), expect_syscallno,
+                syscall_number_for_execve(exec_arch),
+                tgid == tid ? -1 : tgid);
+  LOG(debug) << this->status() << " " << this->regs();
+  if (this->regs().syscall_result()) {
+    errno = -this->regs().syscall_result();
+    if (access(filename.c_str(), 0) == -1 && errno == ENOENT &&
+        exec_arch == x86) {
+      FATAL() << "Cannot find " << filename
+              << " to replay this 32-bit process; you probably built rr with "
+                 "disable32bit";
+    }
+    errno = -this->regs().syscall_result();
+    ASSERT(this, false) << "Exec of " << filename << " failed";
+  }
   if (memory_task != this) {
     memory_task->write_mem(remote_mem.cast<uint8_t>(), saved_data.data(),
                            saved_data.size());

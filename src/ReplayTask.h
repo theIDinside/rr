@@ -75,6 +75,12 @@ public:
     seen_sched_in_syscallbuf_syscall_hook = true;
   }
 
+  void init_buffers_arch_pcp(remote_ptr<void> map_request,
+                             const std::string& cloned_data_fname,
+                             int desched_counter_fd, int cloned_file_data_fd,
+                             /*void* syscallbuf_ptr,*/ uint32_t syscallbuf_size,
+                             void* syscallbuf_contents, uint64_t buf_size);
+
 private:
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
 

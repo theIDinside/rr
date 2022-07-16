@@ -12,6 +12,7 @@
 #include "ReplaySession.h"
 #include "ReplayTimeline.h"
 #include "ScopedFd.h"
+#include "SerializedCheckpoint.h"
 #include "ThreadDb.h"
 #include "TraceFrame.h"
 
@@ -245,7 +246,6 @@ private:
 
   ReplayTimeline timeline;
   Session* emergency_debug_session;
-
   struct Checkpoint {
     enum Explicit { EXPLICIT, NOT_EXPLICIT };
     Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e,
@@ -258,6 +258,13 @@ private:
       }
     }
     Checkpoint() : is_explicit(NOT_EXPLICIT) {}
+
+    // Used when creating deserialized checkpoints
+    Checkpoint(ReplayTimeline& timeline, SerializedCheckpoint cp, ReplaySession::shr_ptr session) : last_continue_tuid(cp.last_continue_tuid), is_explicit(EXPLICIT), where(cp.where) {
+      mark = timeline.mark_from_data(cp);
+      mark.get_internal()->checkpoint = session;
+      timeline.register_explicit_checkpoint(mark);
+    }
 
     ReplayTimeline::Mark mark;
     TaskUid last_continue_tuid;

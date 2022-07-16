@@ -6,7 +6,6 @@ using Cxx = import "/capnp/c++.capnp";
 
 using import "rr_trace.capnp".Registers;
 using import "rr_trace.capnp".ExtraRegisters;
-using import "rr_trace.capnp".TicksSemantics;
 using import "rr_trace.capnp".Arch;
 using import "rr_trace.capnp".RemoteFd;
 

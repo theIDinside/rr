@@ -5,6 +5,7 @@
 #include <math.h>
 #include <sstream>
 
+#include "SerializedCheckpoint.h"
 #include "core.h"
 #include "fast_forward.h"
 #include "log.h"
@@ -216,6 +217,54 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   swap(m, result.ptr);
   current_at_or_after_mark = result.ptr;
   return result;
+}
+
+// XXX re-write (possibly by moving MarkKey et al out of ReplayTimeline as private classes).
+std::shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::mark_at(const ReplayTimeline::MarkKey& key) {
+  auto it = marks.find(key);
+  if (it != marks.end()) {
+    for (shared_ptr<InternalMark>& m : it->second) {
+      if (m->equal_states(*current)) {
+        return m;
+      }
+    }
+  }
+  return make_shared<InternalMark>(this, *current, key);
+}
+
+// XXX re-write + remove/rewrite SerializedCheckpoint
+ReplayTimeline::Mark ReplayTimeline::mark_from_data(SerializedCheckpoint cp) {
+  Mark result;
+  auto key = ReplayTimeline::MarkKey(cp.key.trace_time, cp.key.ticks, ReplayStepKey((ReplayTraceStepType)cp.key.step_key));
+  auto proto = ProtoMark(cp);
+  auto m = make_shared<InternalMark>(this, cp.ticks_at_event_start, nullptr, key);
+  m->ticks_at_event_start = cp.ticks_at_event_start;
+  m->checkpoint_refcount = 0;
+  m->singlestep_to_next_mark_no_signal = cp.singlestep_to_next_mark_no_signal;
+  if(marks.empty()) {
+    marks = {};
+  }
+  if(marks.count(key) == 0) {
+    marks[key] = {};
+  }
+  auto& mark_vector = marks[key];
+  // `mark_from_data` is used by persistent checkpointing. unlike `mark` method the `mark_vector` should always be empty.
+  mark_vector.push_back(m);
+  result.ptr = mark_vector.back();
+  result.ptr->proto = proto;
+  printf("use count: %lu\n", m.use_count());
+  return result;
+}
+
+void ReplayTimeline::register_explicit_checkpoint(Mark& m) {
+  DEBUG_ASSERT(m.ptr->checkpoint != nullptr);
+  auto key = m.ptr->proto.key;
+  if (marks_with_checkpoints.find(key) == marks_with_checkpoints.end()) {
+    marks_with_checkpoints[key] = 1;
+  } else {
+    marks_with_checkpoints[key]++;
+  }
+  ++m.ptr->checkpoint_refcount;
 }
 
 void ReplayTimeline::mark_after_singlestep(const Mark& from,

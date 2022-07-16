@@ -172,4 +172,60 @@ bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
   return false;
 }
 
+void ReplayTask::init_buffers_arch_pcp(
+    remote_ptr<void> map_request, const std::string& cloned_data_fname,
+    int desched_counter_fd, int cloned_file_data_fd, /*void* syscallbuf_ptr, */
+    uint32_t syscall_buffer_size, void* syscallbuf_contents, uint64_t buf_size) {
+  // apply_all_data_records_from_trace();
+
+  AutoRemoteSyscalls remote(this);
+  printf("init_buffers_arch_pcp\n");
+
+  const auto init = [](ReplayTask* t, auto& remote, auto map_request,
+                       auto rec_tid, auto syscallbuf_size,
+                       auto syscallbuf_child, void* syscallbuf,
+                       uint64_t scb_size) {
+    char name[50];
+    sprintf(name, "syscallbuf.%d", rec_tid);
+    KernelMapping km =
+        Session::create_shared_mmap(remote, syscallbuf_size, map_request, name);
+
+    if (!km.size()) {
+      return km;
+    }
+    auto& m = remote.task()->vm()->mapping_of(km.start());
+    remote.task()->vm()->mapping_flags_of(km.start()) |=
+        AddressSpace::Mapping::IS_SYSCALLBUF;
+
+    ASSERT(t, !syscallbuf_child)
+        << "Should not already have syscallbuf initialized!";
+
+    syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
+    // Copy serialized data to syscallbuffer
+    memcpy(m.local_addr, syscallbuf, scb_size);
+    return km;
+  };
+
+  // if (syscallbuf_ptr)
+  {
+    syscallbuf_size = syscall_buffer_size;
+    init(this, remote, map_request, rec_tid, syscall_buffer_size,
+         this->syscallbuf_child, syscallbuf_contents, buf_size);
+    // init_syscall_buffer(remote, map_request);
+    desched_fd_child = desched_counter_fd;
+    // Prevent the child from closing this fd
+    fds->add_monitor(this, desched_fd_child, new PreserveFileMonitor());
+    if (cloned_file_data_fd >= 0) {
+      cloned_file_data_fd_child = cloned_file_data_fd;
+      cloned_file_data_fname = cloned_data_fname;
+      ScopedFd clone_file(cloned_file_data_fname.c_str(), O_RDONLY);
+      ASSERT(this, clone_file.is_open());
+      remote.infallible_send_fd_dup(clone_file, cloned_file_data_fd_child, O_CLOEXEC);
+      fds->add_monitor(this, cloned_file_data_fd_child, new PreserveFileMonitor());
+    }
+  }
+
+  remote.regs().set_syscall_result(syscallbuf_child);
+}
+
 } // namespace rr
