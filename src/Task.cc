@@ -2551,6 +2551,7 @@ void Task::copy_state(const CapturedState& state) {
     ASSERT(this, !syscallbuf_child)
         << "Syscallbuf should not already be initialized in clone";
     if (!state.syscallbuf_child.is_null()) {
+      printf("syscallbuf_child: %p\n", (void*)state.syscallbuf_child.as_int());
       // All these fields are preserved by the fork.
       desched_fd_child = state.desched_fd_child;
       cloned_file_data_fd_child = state.cloned_file_data_fd_child;

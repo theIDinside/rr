@@ -28,6 +28,7 @@ TraceReader& ReplayTask::trace_reader() const {
 
 template <typename Arch>
 void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
+  printf("init_buffers_arch(map_hint = %p)\n", (void*)map_hint.as_int());
   apply_all_data_records_from_trace();
 
   AutoRemoteSyscalls remote(this);
@@ -183,7 +184,7 @@ void ReplayTask::init_buffers_arch_pcp(
 
   const auto init = [](ReplayTask* t, auto& remote, auto map_request,
                        auto rec_tid, auto syscallbuf_size,
-                       auto syscallbuf_child, void* syscallbuf,
+                       auto& syscallbuf_child, void* syscallbuf,
                        uint64_t scb_size) {
     char name[50];
     sprintf(name, "syscallbuf.%d", rec_tid);
@@ -200,7 +201,7 @@ void ReplayTask::init_buffers_arch_pcp(
     ASSERT(t, !syscallbuf_child)
         << "Should not already have syscallbuf initialized!";
 
-    syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
+    // syscallbuf_child = km.start().cast<struct syscallbuf_hdr>();
     // Copy serialized data to syscallbuffer
     memcpy(m.local_addr, syscallbuf, scb_size);
     return km;

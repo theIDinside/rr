@@ -213,7 +213,7 @@ string invoke_write_checkpoints(GdbServer& server, Task*,
       scp.extra_regs = cp.second.mark.extra_regs();
       scp.ticks_at_event_start = ptr->ticks_at_event_start;
       scp.singlestep_to_next_mark_no_signal = ptr->singlestep_to_next_mark_no_signal;
-      serialize_clone_completion(*ptr->checkpoint, fname, scp);
+      serialize_clone_completion(*ptr->checkpoint, ptr->checkpoint->trace_reader().dir(), fname, scp);
     }
   }
   return std::to_string(found_cps) + " checkpoints serialized.";

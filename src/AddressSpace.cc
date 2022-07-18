@@ -790,8 +790,10 @@ template <typename Arch> void AddressSpace::at_preload_init_arch(Task* t) {
         << (t->session().as_record()->use_syscall_buffer() ? "en" : "dis")
         << "abled";
   } else {
+    printf("at_preload_init_arch\n");
     if (params.breakpoint_table_entry_size == -1) {
       do_breakpoint_fault_addr_ = params.breakpoint_instr_addr.rptr().as_int();
+      printf("do_breakpoint_fault_addr_: %p", (void*)do_breakpoint_fault_addr_.register_value());
     } else {
       stopping_breakpoint_table_ = params.breakpoint_table.rptr().as_int();
       stopping_breakpoint_table_entry_size_ =

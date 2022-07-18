@@ -33,8 +33,111 @@
 #include <cstring>
 #include <fcntl.h>
 #include <iterator>
+#include <linux/mman.h>
 #include <sys/prctl.h>
+#include <unistd.h>
 namespace rr {
+
+KernelMapWriter::KernelMapWriter(Task* task, std::string checkpoint_data_dir)
+    : pid(task->tid), checkpoint_directory(std::move(checkpoint_data_dir)) {
+  auto procfs_mem = "/proc/" + std::to_string(pid) + "/mem";
+  proc_mem_fd = open(procfs_mem.c_str(), O_RDONLY);
+  if (proc_mem_fd < 0) {
+    FATAL() << "Failed to open " << procfs_mem;
+  }
+  if (mkdir(map_data_dir(), 0700) != 0)
+    FATAL() << "Failed to create checkpoint data directory " << map_data_dir();
+}
+
+KernelMapWriter::~KernelMapWriter() { close(proc_mem_fd); }
+
+DeserializedMapping::DeserializedMapping(const KernelMapping& km,
+                                         std::string map_contents_filename,
+                                         bool has_emu)
+    : km(km), hasEmu(has_emu), data_{} {
+  data_.resize(km.size());
+  printf("Opening file for processing %s\n", map_contents_filename.c_str());
+  fd = open(map_contents_filename.c_str(), O_RDONLY);
+
+  if (fd < 0)
+    FATAL() << "failed to open " << map_contents_filename;
+  if(read(fd, data_.data(), km.size()) < 0) {
+    FATAL() << " failed to read " << map_contents_filename << " for " << km.str();
+  }
+  close(fd);
+}
+
+std::string KernelMapWriter::file_name_of(const std::string& path) {
+  auto pos = path.rfind("/");
+  // means we're an "ok" filename (ok, means we have no path components - we're
+  // either empty or just a file name)
+  if (pos == std::string::npos) {
+    return path;
+  }
+  return path.substr(pos);
+}
+
+std::string KernelMapWriter::write_map(const KernelMapping& km) const {
+#define FILE_OP_FATAL(file)                                                    \
+  FATAL() << "write_map failed for " << std::string{ file } << " "
+
+  const auto res = lseek(proc_mem_fd, km.start().as_int(), SEEK_SET);
+  if (res == -1)
+    FATAL() << "(lseek failed) write_map failed for " << km.str();
+  // /XXX c++20 _really_ would be useful for a lot of this stuff (std::format is
+  // actually faster (and safer) than snprintf)
+  const auto len =
+      std::snprintf(nullptr, 0, "%s/%s-%p-%p", map_data_dir(),
+                    file_name_of(km.fsname()).c_str(),
+                    (void*)km.start().as_int(), (void*)km.end().as_int());
+  char file[len + 1];
+  if (km.fsname().empty()) {
+    std::snprintf(file, len, "%s/%p-%p", map_data_dir(),
+                  (void*)km.start().as_int(), (void*)km.end().as_int());
+  } else {
+    std::snprintf(file, len, "%s/%s-%p-%p", map_data_dir(),
+                  file_name_of(km.fsname()).c_str(), (void*)km.start().as_int(),
+                  (void*)km.end().as_int());
+  }
+  auto f = ScopedFd(file, O_WRONLY | O_APPEND | O_CREAT, 0700);
+
+  if (!f)
+    FILE_OP_FATAL(file) << "Couldn't open file";
+
+  auto sz = ftruncate(f.get(), km.size());
+  if (sz == -1)
+    FILE_OP_FATAL(file) << "couldn't truncate file to size " << km.size();
+
+  // crazy amount of copying. but right now, who cares.
+  std::vector<Byte> data;
+  data.reserve(km.size());
+  auto bytes_read = read(proc_mem_fd, data.data(), km.size());
+  if (bytes_read == -1)
+    FILE_OP_FATAL(file) << "couldn't read contents of " << km.str();
+
+  if (write(f.get(), data.data(), data.size()) == -1)
+    FILE_OP_FATAL(file) << "couldn't write contents of " << km.str();
+
+  return file;
+}
+
+void slow_verify_syscall_buffer_contents(ReplayTask* task,
+                                         const DeserializedMapping& buf_map,
+                                         const char* map_name) {
+  printf("verifying %s [%s]: ", map_name, buf_map.km.str().c_str());
+  unsigned char buf[buf_map.km.size()];
+  task->read_bytes_fallible(buf_map.km.start(), buf_map.km.size(), buf);
+  auto i = 0;
+  for (auto b : buf) {
+    ASSERT(task, b == *(buf_map.data(i)))
+        << "Contents of " << map_name
+        << " mapped in task does not match serialized data at offset " << i
+        << " => (memory/serialized)" << (uint64_t)b << "/"
+        << (uint64_t) * (buf_map.data(i));
+    i++;
+  }
+  printf("Verification of %s contents OK! (verified %d bytes)\n", map_name, i);
+}
 
 // XXX move to trace_utils
 const auto regs_to_raw = [](auto& regs) -> capnp::Data::Reader {
@@ -51,8 +154,6 @@ const auto extra_regs_to_raw = [](auto& extra_regs) -> capnp::Data::Reader {
 const auto data_to_str = [](auto data) -> std::string {
   return std::string{ data.asChars().begin(), data.size() };
 };
-
-using byte = unsigned char;
 
 // XXX move to trace_utils
 static kj::ArrayPtr<const capnp::byte> str_to_data(const std::string& str) {
@@ -170,7 +271,7 @@ Task::CapturedState reconstitute(ReplaySession& s, ReplayTask* clone_leader,
   res.cloned_file_data_offset = reader.getClonedFileDataOffset();
   {
     memcpy(res.thread_locals, reader.getThreadLocals().asBytes().begin(),
-                PRELOAD_THREAD_LOCALS_SIZE);
+           PRELOAD_THREAD_LOCALS_SIZE);
   }
 
   res.rec_tid = reader.getRecTid();
@@ -282,13 +383,6 @@ static bool vdso_or_stack(const std::string& name) {
   return name.size() > 0 && name[0] == '[';
 }
 
-struct DeserializedMapping {
-  KernelMapping km;
-  const byte* data;
-  uint64_t data_size;
-  bool hasEmu;
-};
-
 std::vector<DeserializedMapping> read_mappings(
     const rr::trace::TaskInfo::Reader& task_info_reader,
     bool* executable_map_found = nullptr) {
@@ -307,10 +401,8 @@ std::vector<DeserializedMapping> read_mappings(
         *executable_map_found = true;
       }
       mappings.push_back(DeserializedMapping{
-          .km = std::move(km),
-          .data = km_data.getContents().asBytes().begin(),
-          .data_size = km_data.getContents().asBytes().size(),
-          .hasEmu = km_data.getHasEmuFile() });
+          std::move(km), data_to_str(km_data.getContentsPath()),
+          km_data.getHasEmuFile() });
     }
   }
   return mappings;
@@ -419,15 +511,15 @@ SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest,
       // new_task->write_mem<byte>(stack_mapping.start(), sm_km->second.ptr,
       // sm_km->second.size, &write_ok);
       auto bytes_written = new_task->write_bytes_helper_no_notifications(
-          stack_mapping.km.start(), stack_mapping.data_size, stack_mapping.data,
+          stack_mapping.km.start(), stack_mapping.size(), stack_mapping.data(),
           &write_ok);
       ASSERT(new_task, write_ok)
           << "Failed to write deserialized contents to memory map "
           << stack_mapping.km.str();
       ASSERT(new_task,
-             static_cast<uint64_t>(bytes_written) == stack_mapping.data_size)
+             static_cast<uint64_t>(bytes_written) == stack_mapping.size())
           << "Failed to deserialize contents into mapping. Wrote "
-          << bytes_written << "; expected " << stack_mapping.data_size;
+          << bytes_written << "; expected " << stack_mapping.size();
     }
 
     const auto& recorded_exe_name = exe_name;
@@ -461,15 +553,15 @@ SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest,
         bool write_ok = true;
         map_region_no_file(remote, mappings[map_index].km);
         auto bytes_written = new_task->write_bytes_helper_no_notifications(
-            mappings[map_index].km.start(), mappings[map_index].data_size,
-            mappings[map_index].data, &write_ok);
+            mappings[map_index].km.start(), mappings[map_index].size(),
+            mappings[map_index].data(), &write_ok);
         ASSERT(new_task, write_ok)
             << "Failed to write deserialized contents to memory map "
             << mappings[map_index].km.str();
         ASSERT(new_task, static_cast<uint64_t>(bytes_written) ==
-                             mappings[map_index].data_size)
+                             mappings[map_index].size())
             << "Failed to deserialize contents into mapping. Wrote "
-            << bytes_written << "; expected " << mappings[map_index].data_size;
+            << bytes_written << "; expected " << mappings[map_index].size();
         // new_task->write_mem<byte>(mappings[i].first.start(),
         // mappings[i].second.ptr, mappings[i].second.size, &write_ok);
         if (mappings[map_index].hasEmu) {
@@ -493,29 +585,35 @@ SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest,
     ASSERT(new_task, scratch_mem != std::end(mappings))
         << "Scratch memory mapping could not be restored.";
     init_scratch_memory(new_task, scratch_mem->km);
-    new_task->apply_all_data_records_from_trace();
+    new_task->write_bytes_ptrace(scratch_mem->km.start(), scratch_mem->size(),
+                                 scratch_mem->data());
+    slow_verify_syscall_buffer_contents(new_task, *scratch_mem,
+                                        "scratch memory");
+    // new_task->apply_all_data_records_from_trace();
     // Since we copy the entire VMA Space, do we need to do this?
     // new_task->vm()->save_auxv(new_task);
     {
       if (!nosysbuf) {
         printf("Syscall buffer enabled (found in serialized contents)\n");
+        auto& sysbuf_map = *syscallbuffer_mapping;
         new_task->init_buffers_arch_pcp(
             cloneLeaderCaptureState.syscallbuf_child,
             cloneLeaderCaptureState.cloned_file_data_fname,
             cloneLeaderCaptureState.desched_fd_child,
             cloneLeaderCaptureState.cloned_file_data_fd_child,
-            cloneLeaderCaptureState.syscallbuf_size,
-            (void*)syscallbuffer_mapping->data,
-            syscallbuffer_mapping->data_size);
+            cloneLeaderCaptureState.syscallbuf_size, (void*)sysbuf_map.data(),
+            sysbuf_map.size());
         // new_task->init_buffers(taskCapturedState.getSyscallbufChild());
         syscall(SYS_rrcall_reload_auxv, new_task->tid);
+        slow_verify_syscall_buffer_contents(new_task, sysbuf_map,
+                                            "syscall buffer");
       }
     }
     new_task->set_regs(regs);
     ASSERT(new_task, !extra_regs.empty());
     new_task->set_extra_regs(extra_regs);
     std::vector<Task::CapturedState> member_states;
-    using ByteVector = std::vector<byte>;
+    using ByteVector = std::vector<Byte>;
     std::vector<std::pair<remote_ptr<void>, ByteVector>> captured_memory;
     for (auto member_state : as.getMemberState()) {
       member_states.push_back(reconstitute(dest, new_task, member_state));
@@ -536,19 +634,6 @@ SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest,
         .member_states = std::move(member_states),
         .captured_memory = std::move(captured_memory) });
     dest.on_create(new_task);
-    // if (rr_preload) {
-    //   auto& mapping = new_task->vm()->mapping_of(rr_preload->km.start());
-    //   ASSERT(new_task, mapping.local_addr) << "No local mapping of
-    //   rr_preload?"; std::memcpy(mapping.local_addr, rr_preload->data,
-    //   rr_preload->data_size);
-    // }
-    // if (thread_locals) {
-    //   auto& mapping = new_task->vm()->mapping_of(thread_locals->km.start());
-    //   ASSERT(new_task, mapping.local_addr)
-    //       << "No local mapping of thread_locals?";
-    //   std::memcpy(mapping.local_addr, thread_locals->data,
-    //               rr_preload->data_size);
-    // }
     new_task->fds = FdTable::create(new_task);
     for (const auto map : mappings_with_emufiles) {
       auto emu = dest.emufs().get_or_create(map->km);
@@ -570,7 +655,8 @@ SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest,
   dest.clone_completion = std::make_unique<CloneCompletion>();
   dest.clone_completion->address_spaces = std::move(partial_init_addr_spaces);
   dest.clone_completion->cloned_fd_tables = std::move(cloned_fd_tables);
-  memcpy(&dest.current_step, cc_reader.getSessionCurrentStep().begin(), sizeof(ReplayTraceStep));
+  memcpy(&dest.current_step, cc_reader.getSessionCurrentStep().begin(),
+         sizeof(ReplayTraceStep));
 
   SerializedCheckpoint cp;
   {
@@ -636,7 +722,7 @@ static auto write_capture_state(const Task::CapturedState& state,
 
   ms.setClonedFileDataOffset(state.cloned_file_data_offset);
   ms.setThreadLocals(
-      { (byte*)state.thread_locals, sizeof(state.thread_locals) });
+      { (Byte*)state.thread_locals, sizeof(state.thread_locals) });
   ms.setRecTid(state.rec_tid);
   ms.setOwnNamespaceRecTid(state.own_namespace_rec_tid);
   ms.setSerial(state.serial);
@@ -651,7 +737,7 @@ static auto write_capture_state(const Task::CapturedState& state,
   auto thread_areas = ms.initThreadAreas(state.thread_areas.size());
   auto i = 0;
   for (const auto& ta : state.thread_areas) {
-    thread_areas[i++] = capnp::Data::Builder{ (byte*)&ta, sizeof(ta) };
+    thread_areas[i++] = capnp::Data::Builder{ (Byte*)&ta, sizeof(ta) };
   }
 }
 
@@ -669,7 +755,8 @@ static void write_members_capture_states(
 }
 
 template <typename CapturedMemoryBuilder>
-static void write_captured_memory(CapturedMemoryBuilder& builder, const CapturedMemory& captured_memory) {
+static void write_captured_memory(CapturedMemoryBuilder& builder,
+                                  const CapturedMemory& captured_memory) {
   auto count = 0;
   for (const auto& mem : captured_memory) {
     auto cm = builder[count++];
@@ -681,11 +768,13 @@ static void write_captured_memory(CapturedMemoryBuilder& builder, const Captured
 }
 
 void serialize_clone_completion(ReplaySession& cloned_session,
+                                const std::string& trace_dir,
                                 const std::string& file,
                                 const SerializedCheckpoint& cp) {
   const auto is_auto_mapped = [](const auto& km) {
     return km.start() == AddressSpace::rr_page_start() ||
-           km.start() == AddressSpace::preload_thread_locals_start();
+           km.start() == AddressSpace::preload_thread_locals_start() ||
+           km.is_vsyscall();
   };
 
   DEBUG_ASSERT(cloned_session.clone_completion != nullptr);
@@ -735,7 +824,8 @@ void serialize_clone_completion(ReplaySession& cloned_session,
     clone_leader.setSerial(as.clone_leader_state.serial);
     clone_leader.setArch(to_trace_arch(as.clone_leader->arch()));
     clone_leader.initRegisters().setRaw(regs_to_raw(as.clone_leader->regs()));
-    clone_leader.initExtraRegisters().setRaw(extra_regs_to_raw(as.clone_leader->extra_regs()));
+    clone_leader.initExtraRegisters().setRaw(
+        extra_regs_to_raw(as.clone_leader->extra_regs()));
 
     auto maps = as.clone_leader->vm()->maps();
     auto begin = maps.begin();
@@ -746,12 +836,10 @@ void serialize_clone_completion(ReplaySession& cloned_session,
     }
     auto kernel_mappings = clone_leader.initMemoryMappings(count);
     auto map_index = 0u;
-    auto procfs_mem = "/proc/" + std::to_string(as.clone_leader->tid) + "/mem";
-    auto proc_fd = open(procfs_mem.c_str(), O_RDONLY);
-    if (proc_fd < 0) {
-      FATAL() << "Could not open: " << procfs_mem << "[" << strerror(errno)
-              << "]";
-    }
+    auto data_dir =
+        trace_dir + "/" + "checkpoint-" + std::to_string(cp.key.trace_time);
+    printf("Checkpoint data directory: %s\n", data_dir.c_str());
+    KernelMapWriter map_writer{ as.clone_leader, data_dir };
 
     for (const auto& map : as.clone_leader->vm()->maps()) {
       if (!is_auto_mapped(map.map) && !is_auto_mapped(map.recorded_map)) {
@@ -765,27 +853,9 @@ void serialize_clone_completion(ReplaySession& cloned_session,
         km.setProtection(map.map.prot());
         km.setFlags(map.map.flags());
         km.setOffset(map.map.file_offset_bytes());
-        if (map.emu_file) {
-          km.setHasEmuFile(true);
-        } else {
-          km.setHasEmuFile(false);
-        }
-        std::vector<byte> mem;
-        mem.reserve(map.map.size());
-        lseek(proc_fd, map.map.start().as_int(), SEEK_SET);
-        std::vector<byte> data;
-        data.reserve(map.map.size());
-        auto bytes_read = read(proc_fd, data.data(), map.map.size());
-        if (bytes_read == -1) {
-          printf("Could not read from: %s mapped at %p. [ERROR]: %s\n",
-                 procfs_mem.c_str(), (void*)map.map.start().as_int(),
-                 strerror(errno));
-        } else {
-          // printf("Wrote %ld KB from the map at offset [%p] - [%p] [%s]\n",
-          // bytes_read / 1024, (void*)map.map.start().as_int(),
-          // (void*)map.map.end().as_int(), map.recorded_map.fsname().c_str());
-          km.setContents({ data.data(), static_cast<size_t>(bytes_read) });
-        }
+        km.setHasEmuFile(map.emu_file != nullptr);
+        const auto path = map_writer.write_map(map.map);
+        km.setContentsPath(str_to_data(path));
         km.setRrSysMap(0);
       }
     }
@@ -796,10 +866,8 @@ void serialize_clone_completion(ReplaySession& cloned_session,
 
     auto member_states_builder = b_as.initMemberState(as.member_states.size());
     write_members_capture_states(member_states_builder, as.member_states);
-
-    close(proc_fd);
   }
-  auto step = capnp::Data::Reader{ (byte*)&cloned_session.current_step, 32 };
+  auto step = capnp::Data::Reader{ (Byte*)&cloned_session.current_step, 32 };
   cc.setSessionCurrentStep(step);
   capnp::writePackedMessageToFd(fd->get(), message);
 }

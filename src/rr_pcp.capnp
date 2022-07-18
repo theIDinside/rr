@@ -113,17 +113,12 @@ struct KernelMapping {
   protection  @5:Int32;
   flags       @6:Int32;
   offset      @7:UInt64;
-  # mappedData :group {
-  #   time            @8:FrameTime;
-  #   source          @9:MappedDataSource;
-  #   fileName        @10:Data;
-  # }
-  contents    @8:Data;    # Warning. Could potentially be massive.
   # extraFds @9 :List(RemoteFd);
   # True if the mapped fd was read-only and should not be monitored
-  skipMonitoringMappedFd @9 :Bool;
-  rrSysMap @10 :Int8;
-  hasEmuFile @11 :Bool;
+  skipMonitoringMappedFd @8 :Bool;
+  rrSysMap @9 :Int8;
+  hasEmuFile @10 :Bool;
+  contentsPath @11 :CString;
 }
 
 struct InitBufferParams {

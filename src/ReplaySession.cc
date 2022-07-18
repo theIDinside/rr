@@ -1388,7 +1388,7 @@ Completion ReplaySession::flush_syscallbuf(ReplayTask* t,
   Registers r = t->regs();
   ASSERT(t, t->stop_sig() == SIGSEGV && r.ip() == t->vm()->do_breakpoint_fault_addr())
       << "Replay got unexpected signal (or none) " << t->stop_sig()
-      << " ip " << r.ip() << " breakpoint_fault_addr " << t->vm()->do_breakpoint_fault_addr();
+      << " ip " << r.ip() << " breakpoint_fault_addr " << t->vm()->do_breakpoint_fault_addr() << " at frame " << current_trace_frame().time();
   r.set_ip(r.ip().increment_by_movrm_insn_length(t->arch()));
   t->set_regs(r);
 

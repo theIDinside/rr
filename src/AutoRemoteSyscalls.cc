@@ -640,6 +640,7 @@ void AutoRemoteSyscalls::infallible_send_fd_dup(const ScopedFd& our_fd, int dup_
 remote_ptr<void> AutoRemoteSyscalls::infallible_mmap_syscall_if_alive(
     remote_ptr<void> addr, size_t length, int prot, int flags, int child_fd,
     uint64_t offset_bytes) {
+  printf("infallible mmap %p of %lu length using fd %d\n", (void*)addr.as_int(), length, child_fd);
   ASSERT(t, offset_bytes % page_size() == 0)
     << "mmap offset (" << offset_bytes << ") must be multiple of page size ("
     << page_size() << ")";

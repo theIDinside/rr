@@ -158,7 +158,7 @@ private:
 class ReplaySession : public Session {
 public:
   typedef std::shared_ptr<ReplaySession> shr_ptr;
-  friend void serialize_clone_completion(ReplaySession& cloned_session,
+  friend void serialize_clone_completion(ReplaySession& cloned_session, const std::string& trace_dir,
                                          const std::string& file,
                                          const SerializedCheckpoint& cp);
   friend SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest, ScopedFd& fd);
