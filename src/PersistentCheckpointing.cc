@@ -38,6 +38,15 @@
 #include <unistd.h>
 namespace rr {
 
+// utility functions for now. Will be removed.
+
+std::unique_ptr<ScopedFd> create_new_exclusive(const char* path) {
+  auto fd = std::make_unique<ScopedFd>(path, O_EXCL | O_CREAT | O_RDWR, 0700);
+  if (!fd->is_open())
+    FATAL() << "failed to open file " << path;
+  return fd;
+}
+
 KernelMapWriter::KernelMapWriter(Task* task, std::string checkpoint_data_dir)
     : pid(task->tid), checkpoint_directory(std::move(checkpoint_data_dir)) {
   auto procfs_mem = "/proc/" + std::to_string(pid) + "/mem";
@@ -45,8 +54,10 @@ KernelMapWriter::KernelMapWriter(Task* task, std::string checkpoint_data_dir)
   if (proc_mem_fd < 0) {
     FATAL() << "Failed to open " << procfs_mem;
   }
-  if (mkdir(map_data_dir(), 0700) != 0)
-    FATAL() << "Failed to create checkpoint data directory " << map_data_dir();
+
+  if (mkdir(map_data_dir(), 0700) != 0) {
+    LOG(info) << " directory " << map_data_dir() << " already exists.";
+  }
 }
 
 KernelMapWriter::~KernelMapWriter() { close(proc_mem_fd); }
@@ -75,7 +86,7 @@ std::string KernelMapWriter::file_name_of(const std::string& path) {
   if (pos == std::string::npos) {
     return path;
   }
-  return path.substr(pos);
+  return path.substr(pos + 1);
 }
 
 std::string KernelMapWriter::write_map(const KernelMapping& km) const {
@@ -88,35 +99,36 @@ std::string KernelMapWriter::write_map(const KernelMapping& km) const {
   // /XXX c++20 _really_ would be useful for a lot of this stuff (std::format is
   // actually faster (and safer) than snprintf)
   const auto len =
-      std::snprintf(nullptr, 0, "%s/%s-%p-%p", map_data_dir(),
+      std::snprintf(nullptr, 0, "%s/%d-%s-%p-%p", map_data_dir(), pid,
                     file_name_of(km.fsname()).c_str(),
                     (void*)km.start().as_int(), (void*)km.end().as_int());
   char file[len + 1];
   if (km.fsname().empty()) {
-    std::snprintf(file, len, "%s/%p-%p", map_data_dir(),
+    std::snprintf(file, len, "%s/%d-%p-%p", map_data_dir(), pid,
                   (void*)km.start().as_int(), (void*)km.end().as_int());
   } else {
-    std::snprintf(file, len, "%s/%s-%p-%p", map_data_dir(),
+    std::snprintf(file, len, "%s/%d-%s-%p-%p", map_data_dir(), pid,
                   file_name_of(km.fsname()).c_str(), (void*)km.start().as_int(),
                   (void*)km.end().as_int());
   }
-  auto f = ScopedFd(file, O_RDWR | O_CREAT, 0700);
+  auto f = create_new_exclusive(file);
 
   if (!f)
     FILE_OP_FATAL(file) << "Couldn't open file";
 
-  auto sz = ftruncate(f.get(), km.size());
+  const auto sz = ftruncate(f->get(), km.size());
   if (sz == -1)
     FILE_OP_FATAL(file) << "couldn't truncate file to size " << km.size();
 
   // crazy amount of copying. but right now, who cares.
   std::vector<Byte> data;
   data.resize(km.size());
-  auto bytes_read = read(proc_mem_fd, data.data(), km.size());
+  const auto bytes_read = read(proc_mem_fd, data.data(), km.size());
   if (bytes_read == -1)
     FILE_OP_FATAL(file) << "couldn't read contents of " << km.str();
 
-  if (write(f.get(), data.data(), data.size()) == -1)
+  const auto bytes_written = write(f->get(), data.data(), data.size());
+  if (bytes_written == -1)
     FILE_OP_FATAL(file) << "couldn't write contents of " << km.str();
 
   return file;
@@ -175,15 +187,6 @@ static trace::Arch to_trace_arch(SupportedArch arch) {
       FATAL() << "Unknown arch";
       return trace::Arch::X86;
   }
-}
-
-// utility functions for now. Will be removed.
-
-std::unique_ptr<ScopedFd> create_new_exclusive(const char* path) {
-  auto fd = std::make_unique<ScopedFd>(path, O_EXCL | O_CREAT | O_RDWR, 0700);
-  if (!fd->is_open())
-    FATAL() << "failed to open file " << path;
-  return fd;
 }
 
 void map_region(ReplayTask* t, AutoRemoteSyscalls& remote,

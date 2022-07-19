@@ -28,6 +28,7 @@ public:
   std::string write_map(const KernelMapping& km) const;
   const char* map_data_dir() const { return checkpoint_directory.c_str(); }
   static std::string file_name_of(const std::string& path);
+
 private:
   int proc_mem_fd;
   pid_t pid;
@@ -36,13 +37,15 @@ private:
 
 class DeserializedMapping {
 public:
-  DeserializedMapping(const KernelMapping& km, std::string map_contents_filename, bool has_emu);
+  DeserializedMapping(const KernelMapping& km,
+                      std::string map_contents_filename, bool has_emu);
   Byte* data() const { return (Byte*)data_.data(); }
   Byte* data(size_t offset) const { return data() + offset; }
   size_t size() const { return km.size(); }
   size_t data_written() const { return data_.size(); }
   const KernelMapping km;
   const bool hasEmu;
+
 private:
   std::string map_contents_file;
   int fd;
