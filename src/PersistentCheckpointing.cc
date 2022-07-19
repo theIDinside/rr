@@ -61,8 +61,9 @@ DeserializedMapping::DeserializedMapping(const KernelMapping& km,
 
   if (fd < 0)
     FATAL() << "failed to open " << map_contents_filename;
-  if(read(fd, data_.data(), km.size()) < 0) {
-    FATAL() << " failed to read " << map_contents_filename << " for " << km.str();
+  if (read(fd, data_.data(), km.size()) < 0) {
+    FATAL() << " failed to read " << map_contents_filename << " for "
+            << km.str();
   }
   close(fd);
 }
@@ -99,7 +100,7 @@ std::string KernelMapWriter::write_map(const KernelMapping& km) const {
                   file_name_of(km.fsname()).c_str(), (void*)km.start().as_int(),
                   (void*)km.end().as_int());
   }
-  auto f = ScopedFd(file, O_WRONLY | O_APPEND | O_CREAT, 0700);
+  auto f = ScopedFd(file, O_RDWR | O_CREAT, 0700);
 
   if (!f)
     FILE_OP_FATAL(file) << "Couldn't open file";
@@ -110,7 +111,7 @@ std::string KernelMapWriter::write_map(const KernelMapping& km) const {
 
   // crazy amount of copying. but right now, who cares.
   std::vector<Byte> data;
-  data.reserve(km.size());
+  data.resize(km.size());
   auto bytes_read = read(proc_mem_fd, data.data(), km.size());
   if (bytes_read == -1)
     FILE_OP_FATAL(file) << "couldn't read contents of " << km.str();
@@ -552,6 +553,9 @@ SerializedCheckpoint deserialize_clone_completion_into(ReplaySession& dest,
         }
         bool write_ok = true;
         map_region_no_file(remote, mappings[map_index].km);
+        printf("writing %lu bytes to addr %p \n",
+               mappings[map_index].data_written(),
+               (void*)mappings[map_index].km.start().as_int());
         auto bytes_written = new_task->write_bytes_helper_no_notifications(
             mappings[map_index].km.start(), mappings[map_index].size(),
             mappings[map_index].data(), &write_ok);

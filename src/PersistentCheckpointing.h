@@ -40,6 +40,7 @@ public:
   Byte* data() const { return (Byte*)data_.data(); }
   Byte* data(size_t offset) const { return data() + offset; }
   size_t size() const { return km.size(); }
+  size_t data_written() const { return data_.size(); }
   const KernelMapping km;
   const bool hasEmu;
 private:
