@@ -42,7 +42,7 @@ public:
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          LazyOffset&) override;
-
+  int orig_fd() const { return original_fd; }
 private:
   int original_fd;
 };

@@ -6,16 +6,19 @@
 
 #include <limits>
 
+#include "CheckpointInfo.h"
 #include "Command.h"
 #include "ExportImportCheckpoints.h"
 #include "Flags.h"
 #include "GdbServer.h"
+#include "PersistentCheckpointing.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "core.h"
 #include "kernel_metadata.h"
 #include "log.h"
 #include "main.h"
+#include <algorithm>
 
 using namespace std;
 
@@ -107,6 +110,7 @@ struct RerunFlags {
   int export_checkpoints_count;
   bool raw;
   bool cpu_unbound;
+  bool ignore_pcp = false;
 
   RerunFlags()
       : trace_start(0),
@@ -490,7 +494,8 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
     { 'f', "function", HAS_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
     { 's', "trace-start", HAS_PARAMETER },
-    { 'u', "cpu-unbound", NO_PARAMETER }
+    { 'u', "cpu-unbound", NO_PARAMETER },
+    { 'b', "begin-from-begin", NO_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -542,6 +547,9 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
       break;
     case 'u':
       flags.cpu_unbound = true;
+      break;
+    case 'b':
+      flags.ignore_pcp = true;
       break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
@@ -641,6 +649,22 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     replay_session = move(command_for_checkpoint.session);
   } else if (flags.import_checkpoint_socket.empty()) {
     replay_session = ReplaySession::create(trace_dir, session_flags(flags));
+    std::shared_ptr<CheckpointInfo> start_from;
+    if(!flags.ignore_pcp) {
+      const auto persistent_checkpoints = replay_session->get_persistent_checkpoints();
+      if(!persistent_checkpoints.empty()) {
+        for(auto i = 0u; i < persistent_checkpoints.size(); i++) {
+          if(flags.trace_start >= persistent_checkpoints[i].time) {
+            start_from = std::make_shared<CheckpointInfo>(persistent_checkpoints[i]);
+          }
+        }
+      }
+    }
+
+    if(start_from) {
+      LOG(info) << "Restoring from persistent checkpoint at time " << start_from->time;
+      replay_session->deserialize_clone_completion(*start_from);
+    }
     // Now that we've spawned the replay, raise our resource limits if
     // possible.
     raise_resource_limits();

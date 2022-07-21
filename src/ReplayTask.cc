@@ -28,6 +28,7 @@ TraceReader& ReplayTask::trace_reader() const {
 
 template <typename Arch>
 void ReplayTask::init_buffers_arch(remote_ptr<void> map_hint) {
+  printf("init_buffers_arch(map_hint = %p)\n", (void*)map_hint.as_int());
   apply_all_data_records_from_trace();
 
   AutoRemoteSyscalls remote(this);
@@ -171,5 +172,6 @@ bool ReplayTask::post_vm_clone(CloneReason reason, int flags, Task* origin) {
 
   return false;
 }
+
 
 } // namespace rr

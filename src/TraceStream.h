@@ -19,6 +19,7 @@
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
 #include "remote_ptr.h"
+#include <sstream>
 
 namespace rr {
 
@@ -490,6 +491,13 @@ public:
   int quirks() const { return quirks_; }
 
   int required_forward_compatibility_version() const { return required_forward_compatibility_version_; }
+
+  /**
+   * Forwards this reader up until `event_number` (so that the next call to .read_frame() gives that event)
+   * This also forwards mmaps and raw_data streams, but leaves task event stream as is, as this can be read
+   * "arbitrarily" as it contains time information in each entry.
+   */
+  void forward_to(FrameTime event_number);
 
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }

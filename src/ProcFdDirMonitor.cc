@@ -8,6 +8,7 @@
 #include "AutoRemoteSyscalls.h"
 #include "RecordSession.h"
 #include "RecordTask.h"
+#include "TaskishUid.h"
 #include "log.h"
 
 using namespace std;
@@ -25,6 +26,8 @@ ProcFdDirMonitor::ProcFdDirMonitor(Task* t, const string& pathname) {
     }
   }
 }
+
+ProcFdDirMonitor::ProcFdDirMonitor(TaskUid tuid) : tuid(tuid) {}
 
 // returns the number of valid dirent structs left in the buffer
 template <typename D>

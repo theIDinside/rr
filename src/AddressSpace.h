@@ -148,6 +148,7 @@ public:
   bool is_stack() const { return fsname().find("[stack") == 0; }
   bool is_vvar() const { return fsname() == "[vvar]"; }
   bool is_vsyscall() const { return fsname() == "[vsyscall]"; }
+  bool is_executable() const { return (prot() & PROT_EXEC) != 0; }
 
   struct stat fake_stat() const {
     struct stat fake_stat;
@@ -618,6 +619,12 @@ public:
    * Dies if no shm size is registered for the address.
    */
   size_t get_shm_size(remote_ptr<void> addr) { return shm_sizes[addr]; }
+
+  /**
+   * For serialization we need to be able to query this.
+   */
+  bool has_shm_at(const KernelMapping& map) const { return shm_sizes.find(map.start()) != std::cend(shm_sizes); }
+
   void remove_shm_size(remote_ptr<void> addr) { shm_sizes.erase(addr); }
 
   /**
@@ -747,6 +754,9 @@ public:
 
   const std::vector<uint8_t>& saved_auxv() { return saved_auxv_; }
   void save_auxv(Task* t);
+
+  /* For using when restoring persistent checkpoints. */
+  void restore_auxv(Task* t, std::vector<uint8_t>&& auxv);
 
   remote_ptr<void> saved_interpreter_base() { return saved_interpreter_base_; }
   void save_interpreter_base(Task* t, std::vector<uint8_t> auxv);

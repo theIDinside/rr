@@ -5,6 +5,8 @@
 #include <math.h>
 #include <sstream>
 
+
+#include "CheckpointInfo.h"
 #include "core.h"
 #include "fast_forward.h"
 #include "log.h"
@@ -31,7 +33,7 @@ void ReplayTimeline::InternalMark::full_print(FILE* out) const {
       fputc(',', out);
     }
   }
-  fputs("]}", out);
+  fputs("]}\n", out);
 }
 
 ostream& operator<<(ostream& s, const ReplayTimeline::MarkKey& o) {
@@ -121,7 +123,8 @@ ReplayTimeline::ProtoMark ReplayTimeline::proto_mark() const {
 }
 
 shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::current_mark() {
-  auto it = marks.find(current_mark_key());
+  auto key = current_mark_key();
+  auto it = marks.find(key);
   // Avoid creating an entry in 'marks' if it doesn't already exist
   if (it != marks.end()) {
     for (shared_ptr<InternalMark>& m : it->second) {
@@ -216,6 +219,53 @@ ReplayTimeline::Mark ReplayTimeline::mark() {
   swap(m, result.ptr);
   current_at_or_after_mark = result.ptr;
   return result;
+}
+
+// XXX re-write (possibly by moving MarkKey et al out of ReplayTimeline as private classes).
+std::shared_ptr<ReplayTimeline::InternalMark> ReplayTimeline::mark_at(const ReplayTimeline::MarkKey& key) {
+  auto it = marks.find(key);
+  if (it != marks.end()) {
+    for (shared_ptr<InternalMark>& m : it->second) {
+      if (m->equal_states(*current)) {
+        return m;
+      }
+    }
+  }
+  return make_shared<InternalMark>(this, *current, key);
+}
+
+// XXX re-write + remove/rewrite SerializedCheckpoint
+ReplayTimeline::Mark ReplayTimeline::mark_from_data(const CheckpointInfo& cp) {
+  Mark result;
+  auto key = ReplayTimeline::MarkKey(cp.time, cp.ticks, ReplayStepKey((ReplayTraceStepType)cp.step_key));
+  auto proto = ProtoMark::from_checkpoint_info(cp);
+  auto m = make_shared<InternalMark>(this, cp.ticks_at_event_start, nullptr, key);
+  m->ticks_at_event_start = cp.ticks_at_event_start;
+  m->checkpoint_refcount = 0;
+  m->singlestep_to_next_mark_no_signal = cp.singlestep_to_next_mark_no_signal;
+  if(marks.empty()) {
+    marks = {};
+  }
+  if(marks.count(key) == 0) {
+    marks[key] = {};
+  }
+  auto& mark_vector = marks[key];
+  // `mark_from_data` is used by persistent checkpointing. unlike `mark` method the `mark_vector` should always be empty.
+  mark_vector.push_back(m);
+  result.ptr = mark_vector.back();
+  result.ptr->proto = proto;
+  return result;
+}
+
+void ReplayTimeline::register_explicit_checkpoint(Mark& m) {
+  DEBUG_ASSERT(m.ptr->checkpoint != nullptr);
+  auto key = m.ptr->proto.key;
+  if (marks_with_checkpoints.find(key) == marks_with_checkpoints.end()) {
+    marks_with_checkpoints[key] = 1;
+  } else {
+    marks_with_checkpoints[key]++;
+  }
+  ++m.ptr->checkpoint_refcount;
 }
 
 void ReplayTimeline::mark_after_singlestep(const Mark& from,
@@ -579,10 +629,12 @@ void ReplayTimeline::seek_to_proto_mark(const ProtoMark& pmark) {
 
 void ReplayTimeline::seek_to_mark(const Mark& mark) {
   seek_up_to_mark(mark);
-  while (current_mark() != mark.ptr) {
+  auto cm = current_mark();
+  while (cm != mark.ptr) {
     unapply_breakpoints_and_watchpoints();
     ReplayStepToMarkStrategy strategy;
     replay_step_to_mark(mark, strategy);
+    cm = current_mark();
   }
   current_at_or_after_mark = mark.ptr;
   // XXX handle cases where breakpoints can't yet be applied
@@ -1651,6 +1703,15 @@ ReplayTimeline::Mark ReplayTimeline::set_short_checkpoint() {
   }
   swap(m, reverse_exec_short_checkpoint);
   return reverse_exec_short_checkpoint;
+}
+
+ReplayTimeline::ProtoMark ReplayTimeline::ProtoMark::from_checkpoint_info(
+    const CheckpointInfo& cp) {
+  auto proto_mark = ProtoMark{ MarkKey{
+      cp.time, cp.ticks, ReplayStepKey{ (ReplayTraceStepType)cp.step_key } } };
+  proto_mark.regs = cp.regs;
+  proto_mark.return_addresses = cp.return_addresses;
+  return proto_mark;
 }
 
 } // namespace rr

@@ -6,6 +6,7 @@
 #include "core.h"
 #include "log.h"
 #include "remote_ptr.h"
+#include "util.h"
 
 namespace rr {
 
@@ -66,6 +67,8 @@ public:
   void update_start(remote_ptr<void> s) const {
     const_cast<MemoryRange*>(this)->start_ = s;
   }
+
+  size_t page_count() const { return (end().as_int() - start().as_int()) / page_size(); }
 
 private:
   remote_ptr<void> start_;

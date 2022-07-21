@@ -69,7 +69,7 @@ public:
    * Close fds in list after an exec.
    */
   void close_after_exec(ReplayTask* t, const std::vector<int>& fds_to_close);
-
+  const std::unordered_map<int, FileMonitor::shr_ptr>& monitored_fds() const { return fds; }
 private:
   FdTable() : fd_count_beyond_limit(0) {}
   FdTable(const FdTable& other) : fds(other.fds),

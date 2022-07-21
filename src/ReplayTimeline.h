@@ -18,6 +18,8 @@
 
 namespace rr {
 
+class CheckpointInfo;
+
 enum RunDirection { RUN_FORWARD, RUN_BACKWARD };
 
 /**
@@ -73,6 +75,13 @@ public:
     const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
 
     FrameTime time() const { return ptr->proto.key.trace_time; }
+    Ticks ticks() const { return ptr->proto.key.ticks; }
+    int step_key() const { return ptr->proto.key.step_key.as_int(); }
+
+
+    // XXX re-write, so instead of returning internal, return the data we then request from internal
+    //  in ser/deser work of checkpoints.
+    std::shared_ptr<InternalMark> get_internal() const { return ptr; }
 
   private:
     friend class ReplayTimeline;
@@ -319,11 +328,13 @@ private:
     ProtoMark(const MarkKey& key) : key(key) {}
 
     bool equal_states(ReplaySession& session) const;
-
     MarkKey key;
     Registers regs;
     ReturnAddressList return_addresses;
+    static ProtoMark from_checkpoint_info(const CheckpointInfo& cp);
   };
+
+
 
   /**
    * Everything we know about the tracee state for a particular Mark.
@@ -331,6 +342,17 @@ private:
    * of two Marks.
    */
   struct InternalMark {
+    InternalMark(ReplayTimeline* owner, Ticks ticks_at_event_start, ReplayTask* task, const MarkKey& key) : owner(owner),
+          proto(key),
+          ticks_at_event_start(ticks_at_event_start),
+          checkpoint_refcount(0),
+          singlestep_to_next_mark_no_signal(false) {
+      if(task) {
+        proto = ProtoMark(key, task);
+        extra_regs = task->extra_regs();
+      }
+    }
+
     InternalMark(ReplayTimeline* owner, ReplaySession& session,
                  const MarkKey& key)
         : owner(owner),
@@ -528,6 +550,15 @@ private:
    * accelerate a sequence of reverse singlestep operations.
    */
   Mark reverse_exec_short_checkpoint;
+
+public:
+  // XXX not great. But takes |cp| and creates |Mark| from it. PCP probably justifies
+  //  moving all these classes, ProtoMark, MarkKey and InternalMark out of ReplayTimeline,
+  // so that the creation of these do not have to be defined inside the class like this.
+  Mark mark_from_data(const CheckpointInfo& cp);
+  void register_explicit_checkpoint(Mark& m);
+  // XXX re-write (possibly by moving MarkKey et al out of ReplayTimeline as private classes).
+  std::shared_ptr<InternalMark> mark_at(const ReplayTimeline::MarkKey& key);
 };
 
 std::ostream& operator<<(std::ostream& s, const ReplayTimeline::Mark& o);

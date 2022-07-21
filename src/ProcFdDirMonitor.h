@@ -15,11 +15,11 @@ namespace rr {
 class ProcFdDirMonitor : public FileMonitor {
 public:
   ProcFdDirMonitor(Task* t, const std::string& pathname);
-
+  ProcFdDirMonitor(TaskUid tuid);
   virtual Type type() override { return ProcFd; }
 
   virtual void filter_getdents(RecordTask* t) override;
-
+  const TaskUid& task_uuid() const { return tuid; }
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.
   TaskUid tuid;
