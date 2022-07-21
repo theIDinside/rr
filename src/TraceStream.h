@@ -19,8 +19,19 @@
 #include "TraceFrame.h"
 #include "TraceTaskEvent.h"
 #include "remote_ptr.h"
+#include <sstream>
 
 namespace rr {
+
+struct StreamPosition {
+  size_t events, raw_data, mmaps, tasks;
+
+  std::string str() const {
+    std::stringstream ss{};
+    ss << "evt: " << events << ", raw: " << raw_data << ", mmaps: " << mmaps << ", tasks: " << tasks;
+    return ss.str();
+  }
+};
 
 /**
  * Bump this when rr changes mean that traces produced by new rr can't be replayed by old rr.
@@ -490,6 +501,21 @@ public:
   int quirks() const { return quirks_; }
 
   int required_forward_compatibility_version() const { return required_forward_compatibility_version_; }
+
+  /**
+   * Forwards this reader up until `event_number` (so that the next call to .read_frame() gives that event)
+   * This also forwards mmaps and raw_data streams, but leaves task event stream as is, as this can be read
+   * "arbitrarily" as it contains time information in each entry.
+   */
+  void forward_to(FrameTime event_number);
+
+  StreamPosition get_buffer_pos() const {
+    return StreamPosition{.events = reader(Substream::EVENTS).buffer_position(), .raw_data = reader(Substream::RAW_DATA).buffer_position(), .mmaps = reader(Substream::MMAPS).buffer_position(), .tasks = reader(Substream::TASKS).buffer_position() };
+  }
+
+  StreamPosition get_fd_pos() const {
+    return StreamPosition{.events = reader(Substream::EVENTS).fd_position(), .raw_data = reader(Substream::RAW_DATA).fd_position(), .mmaps = reader(Substream::MMAPS).fd_position(), .tasks = reader(Substream::TASKS).fd_position() };
+  }
 
 private:
   CompressedReader& reader(Substream s) { return *readers[s]; }

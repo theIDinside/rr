@@ -87,6 +87,9 @@ public:
     return *this;
   }
 
+  inline size_t buffer_position() const { return buffer_read_pos; }
+  inline size_t fd_position() const { return fd_offset; }
+
 protected:
   bool refill_buffer();
 

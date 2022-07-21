@@ -1,9 +1,18 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
 #include "GdbCommand.h"
-
+#include "EmuFs.h"
+#include "GdbServer.h"
+#include "PersistentCheckpointing.h"
 #include "ReplayTask.h"
+#include "ReplayTimeline.h"
+#include "ReturnAddressList.h"
+#include "ScopedFd.h"
 #include "log.h"
+#include <cstring>
+#include <fcntl.h>
+#include <string>
+#include <sys/select.h>
 
 using namespace std;
 
@@ -108,13 +117,13 @@ string invoke_checkpoint(GdbServer& gdb_server, Task*,
                          const vector<string>& args) {
   const string& where = args[1];
   int checkpoint_id = ++gNextCheckpointId;
-  GdbServer::Checkpoint::Explicit e;
+  Checkpoint::Explicit e;
   if (gdb_server.timeline.can_add_checkpoint()) {
-    e = GdbServer::Checkpoint::EXPLICIT;
+    e = Checkpoint::EXPLICIT;
   } else {
-    e = GdbServer::Checkpoint::NOT_EXPLICIT;
+    e = Checkpoint::NOT_EXPLICIT;
   }
-  gdb_server.checkpoints[checkpoint_id] = GdbServer::Checkpoint(
+  gdb_server.checkpoints[checkpoint_id] = Checkpoint(
       gdb_server.timeline, gdb_server.last_continue_tuid, e, where);
   return string("Checkpoint ") + to_string(checkpoint_id) + " at " + where;
 }
@@ -129,7 +138,7 @@ string invoke_delete_checkpoint(GdbServer& gdb_server, Task*,
   int id = stoi(args[1]);
   auto it = gdb_server.checkpoints.find(id);
   if (it != gdb_server.checkpoints.end()) {
-    if (it->second.is_explicit == GdbServer::Checkpoint::EXPLICIT) {
+    if (it->second.is_explicit == Checkpoint::EXPLICIT) {
       gdb_server.timeline.remove_explicit_checkpoint(it->second.mark);
     }
     gdb_server.checkpoints.erase(it);
@@ -159,6 +168,70 @@ static SimpleGdbCommand info_checkpoints(
   "info checkpoints",
   "list all checkpoints created with the 'checkpoint' command",
   invoke_info_checkpoints);
+
+string invoke_load_checkpoint(GdbServer& server, Task*, const vector<string>&) {
+  auto existing_checkpoints =
+      server.current_session().as_replay()->get_persistent_checkpoints();
+  auto cp_deserialized = 0;
+  for (const auto& cp : existing_checkpoints) {
+    ScopedFd fd(cp.info_file.c_str(), O_RDONLY);
+    if (fd.get() == -1)
+      break;
+    auto session = ReplaySession::create(
+        server.current_session().as_replay()->trace_reader().dir(),
+        server.timeline.current_session().flags());
+    int checkpoint_id = ++gNextCheckpointId;
+    session->deserialize_clone_completion(cp);
+    server.checkpoints[checkpoint_id] =
+        Checkpoint(server.timeline, cp, session);
+    cp_deserialized++;
+  }
+  return std::to_string(cp_deserialized) + " deserialized checkpoints";
+}
+
+static SimpleGdbCommand load_checkpoint(
+  "load-serialized-checkpoint",
+  "deserializes a checkpoint",
+  invoke_load_checkpoint);
+
+string invoke_write_checkpoints(GdbServer& server, Task* t,
+                                const vector<string>&) {
+  auto new_cps = 0;
+  const auto& trace_dir = t->session().as_replay()->trace_reader().dir();
+  std::vector<CheckpointInfo> existing_checkpoints;
+
+  for(auto& cp : server.checkpoints) {
+    auto ptr = cp.second.mark.get_internal();
+    if(ptr && ptr->checkpoint) {
+      if(cp.second.unique_id == 0) {
+        existing_checkpoints.emplace_back(cp.second);
+        // update written checkpoint id, so we don't write it twice in a session.
+        cp.second.unique_id = existing_checkpoints.back().unique_id;
+        ptr->checkpoint->serialize_clone_completion(existing_checkpoints.back());
+        new_cps++;
+      } else {
+        existing_checkpoints.emplace_back(cp.second);
+      }
+    }
+  }
+  update_serialized_checkpoints(trace_dir, t->arch(), ((ReplayTask*)t)->trace_reader().cpuid_records(), existing_checkpoints);
+  return std::to_string(new_cps) + " new checkpoints serialized. (total: " + std::to_string(existing_checkpoints.size()) + ")";
+}
+
+static SimpleGdbCommand write_checkpoints(
+    "write-checkpoints",
+    "Serialize all checkpoints created with the 'checkpoint' command",
+    invoke_write_checkpoints);
+
+string invoke_info_written_checkpoints(GdbServer&, Task*,
+                                       const vector<string>&) {
+  return "test function not implemented";
+}
+
+static SimpleGdbCommand info_written_checkpoints(
+    "info-written-checkpoints",
+    "list all checkpoints written to file by the 'write checkpoints' command",
+    invoke_info_written_checkpoints);
 
 /*static*/ void GdbCommand::init_auto_args() {
   checkpoint.add_auto_arg("rr-where");

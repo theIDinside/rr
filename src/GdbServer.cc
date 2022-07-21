@@ -31,6 +31,8 @@
 #include "log.h"
 #include "util.h"
 
+#include "CheckpointInfo.h"
+
 using namespace std;
 
 namespace rr {
@@ -2155,6 +2157,23 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
   }
   files.insert(make_pair(ret_fd, move(contents)));
   return ret_fd;
+}
+
+Checkpoint::Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid,
+                       Explicit e, const std::string& where)
+    : last_continue_tuid(last_continue_tuid), is_explicit(e), where(where) {
+  if (e == EXPLICIT) {
+    mark = timeline.add_explicit_checkpoint();
+  } else {
+    mark = timeline.mark();
+  }
+}
+
+// Used when deserializing persistent checkpoints
+Checkpoint::Checkpoint(ReplayTimeline& timeline, const CheckpointInfo& cp, ReplaySession::shr_ptr session) : last_continue_tuid(cp.last_continue_tuid), is_explicit(EXPLICIT), where(cp.where), unique_id(cp.unique_id) {
+  mark = timeline.mark_from_data(cp);
+  mark.get_internal()->checkpoint = session;
+  timeline.register_explicit_checkpoint(mark);
 }
 
 } // namespace rr

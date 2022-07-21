@@ -12,6 +12,7 @@
 #include "Command.h"
 #include "Flags.h"
 #include "GdbServer.h"
+#include "PersistentCheckpointing.h"
 #include "ReplaySession.h"
 #include "ScopedFd.h"
 #include "core.h"
@@ -79,7 +80,10 @@ struct ReplayFlags {
   // Start a debug server for the task scheduled at the first
   // event at which reached this event AND target_process has
   // been "created".
-  FrameTime goto_event;
+  struct {
+    FrameTime goto_event;
+    bool start_from_beginning = false;
+  };
 
   FrameTime singlestep_to_event;
 
@@ -163,6 +167,7 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
     { 'k', "keep-listening", NO_PARAMETER },
     { 'f', "onfork", HAS_PARAMETER },
     { 'g', "goto", HAS_PARAMETER },
+    { 'b', "goto from beginning", HAS_PARAMETER },
     { 'o', "debugger-option", HAS_PARAMETER },
     { 'p', "onprocess", HAS_PARAMETER },
     { 'q', "no-redirect-output", NO_PARAMETER },
@@ -206,6 +211,13 @@ static bool parse_replay_arg(vector<string>& args, ReplayFlags& flags) {
         return false;
       }
       flags.goto_event = opt.int_value;
+      break;
+    case 'b':
+      if (!opt.verify_valid_int(1, UINT32_MAX)) {
+        return false;
+      }
+      flags.goto_event = opt.int_value;
+      flags.start_from_beginning = true;
       break;
     case 'k':
       flags.keep_listening = true;
@@ -442,6 +454,7 @@ static void handle_SIGINT_in_child(int sig) {
 }
 
 static int replay(const string& trace_dir, const ReplayFlags& flags) {
+  printf("Replay started\n");
   GdbServer::Target target;
   switch (flags.process_created_how) {
     case ReplayFlags::CREATED_EXEC:
@@ -465,6 +478,18 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
       serve_replay_no_debugger(trace_dir, flags);
     } else {
       auto session = ReplaySession::create(trace_dir, session_flags(flags));
+      const auto persistent_checkpoints = session->get_persistent_checkpoints();
+      const CheckpointInfo* start_from = nullptr;
+      if (!persistent_checkpoints.empty()) {
+        for (auto i = 0u; i < persistent_checkpoints.size(); i++) {
+          if (target.event >= persistent_checkpoints[i].time) {
+            start_from = &persistent_checkpoints[i];
+          }
+        }
+      }
+      if (start_from != nullptr) {
+        session->deserialize_clone_completion(*start_from);
+      }
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;
@@ -492,6 +517,22 @@ static int replay(const string& trace_dir, const ReplayFlags& flags) {
 
       ScopedFd debugger_params_write_pipe(debugger_params_pipe[1]);
       auto session = ReplaySession::create(trace_dir, session_flags(flags));
+      if (!flags.start_from_beginning) {
+        const auto persistent_checkpoints = session->get_persistent_checkpoints();
+        const CheckpointInfo* start_from = nullptr;
+        if (!persistent_checkpoints.empty()) {
+          for (auto i = 0u; i < persistent_checkpoints.size(); i++) {
+            if (target.event >= persistent_checkpoints[i].time) {
+              start_from = &persistent_checkpoints[i];
+            }
+          }
+        }
+
+        if (start_from != nullptr) {
+          session->deserialize_clone_completion(*start_from);
+        }
+      }
+
       GdbServer::ConnectionFlags conn_flags;
       conn_flags.dbg_port = flags.dbg_port;
       conn_flags.dbg_host = flags.dbg_host;

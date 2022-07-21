@@ -36,6 +36,7 @@ class ReplaySession;
 class ScopedFd;
 class Session;
 class ThreadGroup;
+class CheckpointInfo;
 
 enum CloneFlags {
   /**
@@ -132,7 +133,6 @@ class Task {
   friend class Session;
   friend class RecordSession;
   friend class ReplaySession;
-
 public:
   typedef std::vector<WatchConfig> DebugRegs;
 
@@ -213,6 +213,11 @@ public:
    * Return the path of /proc/<pid>/exe
    */
   std::string proc_exe_path();
+
+  /**
+   * Return the path of /proc/<pid>/mem
+  */
+  std::string proc_mem_path() const;
 
   /**
    * Return the path of the executable (i.e. what
@@ -955,6 +960,12 @@ public:
       os_exec(arch, find_exec_stub(arch));
   }
 
+  void new_os_exec(SupportedArch exec_arch, std::string filename);
+
+  void new_os_exec_stub(SupportedArch arch) {
+    new_os_exec(arch, find_exec_stub(arch));
+  }
+
   /**
    * Try to make the current task look exactly like some `other` task
    * by copying that task's address space and other relevant properties,
@@ -1029,6 +1040,8 @@ protected:
                       Session* other_session = nullptr,
                       FdTable::shr_ptr new_fds = nullptr,
                       ThreadGroup::shr_ptr new_tg = nullptr);
+
+  Task* create_task_copy(Session* session, Task* t, int rec_tid, int serial);
 
   /**
    * Internal method called after the first wait() during a clone().

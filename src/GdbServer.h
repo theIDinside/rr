@@ -19,6 +19,23 @@ namespace rr {
 
 static std::string localhost_addr = "127.0.0.1";
 
+struct Checkpoint {
+  enum Explicit { EXPLICIT, NOT_EXPLICIT };
+  Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e,
+             const std::string& where);
+  Checkpoint() : is_explicit(NOT_EXPLICIT) {}
+  // Used when creating deserialized checkpoints
+  Checkpoint(ReplayTimeline& timeline, const CheckpointInfo& cp,
+             ReplaySession::shr_ptr session);
+
+  ReplayTimeline::Mark mark;
+  TaskUid last_continue_tuid;
+  Explicit is_explicit;
+  std::string where;
+  // Only persistent checkpoints have unique id's.
+  size_t unique_id = 0;
+};
+
 class GdbServer {
   // Not ideal but we can't inherit friend from GdbCommand
   friend std::string invoke_checkpoint(GdbServer&, Task*,
@@ -26,6 +43,12 @@ class GdbServer {
   friend std::string invoke_delete_checkpoint(GdbServer&, Task*,
                                               const std::vector<std::string>&);
   friend std::string invoke_info_checkpoints(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
+  friend std::string invoke_write_checkpoints(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
+  friend std::string invoke_info_written_checkpoints(GdbServer&, Task*,
+                                             const std::vector<std::string>&);
+  friend std::string invoke_load_checkpoint(GdbServer&, Task*,
                                              const std::vector<std::string>&);
 
 public:
@@ -240,23 +263,6 @@ private:
   ReplayTimeline timeline;
   Session* emergency_debug_session;
 
-  struct Checkpoint {
-    enum Explicit { EXPLICIT, NOT_EXPLICIT };
-    Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid, Explicit e,
-               const std::string& where)
-        : last_continue_tuid(last_continue_tuid), is_explicit(e), where(where) {
-      if (e == EXPLICIT) {
-        mark = timeline.add_explicit_checkpoint();
-      } else {
-        mark = timeline.mark();
-      }
-    }
-    Checkpoint() : is_explicit(NOT_EXPLICIT) {}
-    ReplayTimeline::Mark mark;
-    TaskUid last_continue_tuid;
-    Explicit is_explicit;
-    std::string where;
-  };
   // |debugger_restart_mark| is the point where we will restart from with
   // a no-op debugger "run" command.
   Checkpoint debugger_restart_checkpoint;
