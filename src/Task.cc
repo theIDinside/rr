@@ -2563,7 +2563,6 @@ void Task::copy_state(const CapturedState& state) {
     ASSERT(this, !syscallbuf_child)
         << "Syscallbuf should not already be initialized in clone";
     if (!state.syscallbuf_child.is_null()) {
-      printf("syscallbuf_child: %p\n", (void*)state.syscallbuf_child.as_int());
       // All these fields are preserved by the fork.
       desched_fd_child = state.desched_fd_child;
       cloned_file_data_fd_child = state.cloned_file_data_fd_child;
@@ -2579,6 +2578,7 @@ void Task::copy_state(const CapturedState& state) {
     }
   }
   preload_globals = state.preload_globals;
+  // XXX(simon): is this really a required assert? For persistent checkpoints, this will always fail.
   // ASSERT(this, as->thread_locals_tuid() != tuid());
   memcpy(&thread_locals, &state.thread_locals, PRELOAD_THREAD_LOCALS_SIZE);
   // The scratch buffer (for now) is merely a private mapping in

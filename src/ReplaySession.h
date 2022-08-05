@@ -255,11 +255,6 @@ public:
    */
   static shr_ptr create(const std::string& dir, const Flags& flags);
 
-  // todo(simon): this should in it's final form return a ReplaySession in
-  // it's partially initialized state, according to Roc
-  // opened_checkpoint_fd is the file descriptor for opened file representing the serialized checkpoint.
-  static shr_ptr load_checkpoint(const std::string& trace_dir, ScopedFd& opened_checkpoint_fd, const Flags& flags);
-
   struct StepConstraints {
     explicit StepConstraints(RunCommand command)
         : command(command), stop_at_time(0), ticks_target(0) {}

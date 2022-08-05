@@ -454,7 +454,6 @@ static void handle_SIGINT_in_child(int sig) {
 }
 
 static int replay(const string& trace_dir, const ReplayFlags& flags) {
-  printf("Replay started\n");
   GdbServer::Target target;
   switch (flags.process_created_how) {
     case ReplayFlags::CREATED_EXEC:

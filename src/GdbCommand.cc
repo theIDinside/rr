@@ -175,8 +175,10 @@ string invoke_load_checkpoint(GdbServer& server, Task*, const vector<string>&) {
   auto cp_deserialized = 0;
   for (const auto& cp : existing_checkpoints) {
     ScopedFd fd(cp.info_file.c_str(), O_RDONLY);
-    if (fd.get() == -1)
-      break;
+    if (!fd.is_open()) {
+      LOG(error) << "Serialized checkpoint data has been corrupted for " << cp.unique_id;
+      continue;
+    }
     auto session = ReplaySession::create(
         server.current_session().as_replay()->trace_reader().dir(),
         server.timeline.current_session().flags());
@@ -222,16 +224,6 @@ static SimpleGdbCommand write_checkpoints(
     "write-checkpoints",
     "Serialize all checkpoints created with the 'checkpoint' command",
     invoke_write_checkpoints);
-
-string invoke_info_written_checkpoints(GdbServer&, Task*,
-                                       const vector<string>&) {
-  return "test function not implemented";
-}
-
-static SimpleGdbCommand info_written_checkpoints(
-    "info-written-checkpoints",
-    "list all checkpoints written to file by the 'write checkpoints' command",
-    invoke_info_written_checkpoints);
 
 /*static*/ void GdbCommand::init_auto_args() {
   checkpoint.add_auto_arg("rr-where");

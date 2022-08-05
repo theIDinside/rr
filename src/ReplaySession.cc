@@ -2105,14 +2105,6 @@ void ReplaySession::serialize_clone_completion(const CheckpointInfo &cp_info) {
     clone_leader.initExtraRegisters().setRaw(
         extra_regs_to_raw(as.clone_leader->extra_regs()));
 
-    auto maps = as.clone_leader->vm()->maps();
-    auto begin = maps.begin();
-    auto count = 0u;
-    while (begin != maps.end()) {
-      ++count;
-      ++begin;
-    }
-
     auto data_dir = cp_info.info_file + std::to_string(cp_info.time);
     LOG(info) << "Serializing checkpoint to dir " << data_dir;
     write_vm(as.clone_leader, clone_leader, data_dir);
