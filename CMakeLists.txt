@@ -537,6 +537,7 @@ set(RR_SOURCES
   src/TraceStream.cc
   src/VirtualPerfCounterMonitor.cc
   src/util.cc
+  src/stream_util.cc
   src/WaitStatus.cc
   ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
   ${BLAKE_ARCH_DIR}/blake2b.c
