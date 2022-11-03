@@ -18,6 +18,7 @@ class MmappedFileMonitor : public FileMonitor {
 public:
   MmappedFileMonitor(Task* t, int fd);
   MmappedFileMonitor(Task* t, EmuFile::shr_ptr f);
+  MmappedFileMonitor(bool dead, dev_t device, ino_t inode) noexcept;
 
   virtual Type type() override { return Mmapped; }
   void revive() { dead_ = false; }
@@ -33,7 +34,7 @@ public:
    */
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          LazyOffset& offset) override;
-
+  std::tuple<bool, dev_t, ino_t> info() const { return std::tuple<bool, dev_t, ino_t>{dead_, device_, inode_}; }
 private:
   // Whether this monitor is still actively monitoring
   bool dead_;

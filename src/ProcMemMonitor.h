@@ -15,7 +15,7 @@ namespace rr {
 class ProcMemMonitor : public FileMonitor {
 public:
   ProcMemMonitor(Task* t, const std::string& pathname);
-
+  ProcMemMonitor(AddressSpaceUid auid) noexcept;
   virtual Type type() override { return ProcMem; }
 
   // We need to PREVENT_SWITCH, since the timing of the write is otherwise
@@ -30,7 +30,7 @@ public:
   }
 
   bool target_is_vm(AddressSpace *t);
-
+  AddressSpaceUid get_auid() const { return auid; }
 private:
   // 0 if this doesn't object doesn't refer to a tracee's proc-mem.
   AddressSpaceUid auid;

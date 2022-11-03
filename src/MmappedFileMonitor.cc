@@ -27,6 +27,8 @@ MmappedFileMonitor::MmappedFileMonitor(Task* t, EmuFile::shr_ptr f) {
   inode_ = f->inode();
 }
 
+MmappedFileMonitor::MmappedFileMonitor(bool dead, dev_t device, ino_t inode) noexcept : dead_(dead), device_(device), inode_(inode) {}
+
 void MmappedFileMonitor::did_write(Task* t, const std::vector<Range>& ranges,
                                    LazyOffset& offset) {
   // If there are no remaining mappings that we care about, those can't reappear
