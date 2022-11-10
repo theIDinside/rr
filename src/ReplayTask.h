@@ -75,6 +75,9 @@ public:
     seen_sched_in_syscallbuf_syscall_hook = true;
   }
 
+  /* Digs out the original executable image from the trace. */
+  std::string original_exe() const;
+
 private:
   template <typename Arch> void init_buffers_arch(remote_ptr<void> map_hint);
 
