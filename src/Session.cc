@@ -29,16 +29,6 @@ using namespace std;
 
 namespace rr {
 
-struct Session::CloneCompletion {
-  struct AddressSpaceClone {
-    Task* clone_leader;
-    Task::CapturedState clone_leader_state;
-    vector<Task::CapturedState> member_states;
-    vector<pair<remote_ptr<void>, vector<uint8_t>>> captured_memory;
-  };
-  vector<AddressSpaceClone> address_spaces;
-  Task::ClonedFdTables cloned_fd_tables;
-};
 
 Session::Session()
     : tracee_socket(make_shared<ScopedFd>()),
@@ -492,7 +482,7 @@ KernelMapping Session::create_shared_mmap(
   return km;
 }
 
-static char* extract_name(char* name_buffer, size_t buffer_size) {
+char* extract_name(char* name_buffer, size_t buffer_size) {
   // Recover the name that was originally chosen by finding the part of the
   // name between rr_mapping_prefix and the -%d-%d at the end.
   char* path_start = strstr(name_buffer, Session::rr_mapping_prefix());
