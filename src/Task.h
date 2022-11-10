@@ -215,6 +215,16 @@ public:
   std::string proc_exe_path();
 
   /**
+   * Return the path of /proc/<pid>/mem
+  */
+  std::string proc_mem_path() const;
+
+  /**
+   * Return the path of /proc/<pid>/pagemap
+   */
+  std::string proc_pagemap_path() const;
+
+  /**
    * Return the path of the executable (i.e. what
    * /proc/<pid>/exe points to).
    */
