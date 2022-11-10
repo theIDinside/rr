@@ -238,4 +238,18 @@ const char* state_name(SyscallState state) {
   }
 }
 
+bool Event::can_checkpoint_at() const {
+  if (has_ticks_slop()) {
+    return false;
+  }
+  switch (type()) {
+    case EV_EXIT:
+    case EV_SYSCALLBUF_RESET:
+    case EV_TRACE_TERMINATION:
+      return false;
+    default:
+      return true;
+  }
+}
+
 } // namespace rr

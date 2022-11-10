@@ -380,6 +380,10 @@ struct Event {
   /** Return a string naming |ev|'s type. */
   std::string type_name() const;
 
+  // XXX make all places use this instead of the static function in ReplaySession.cc
+  /** Check if this event is checkpointable */
+  bool can_checkpoint_at() const;
+
   static Event noop() { return Event(EV_NOOP); }
   static Event trace_termination() { return Event(EV_TRACE_TERMINATION); }
   static Event instruction_trap() { return Event(EV_INSTRUCTION_TRAP); }
