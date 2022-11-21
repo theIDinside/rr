@@ -31,6 +31,8 @@
 #include "log.h"
 #include "util.h"
 
+#include "CheckpointInfo.h"
+
 using namespace std;
 
 namespace rr {
@@ -1599,8 +1601,29 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   if (checkpoint_to_restore.mark) {
     timeline.seek_to_mark(checkpoint_to_restore.mark);
-    last_query_tuid = last_continue_tuid =
-        checkpoint_to_restore.last_continue_tuid;
+    const auto at_followed_process = [&](const auto& target) {
+      return timeline.current_session().current_task()->tgid() == target.pid;
+    };
+    if(at_followed_process(target)) {
+      // normal checkpoint restart branch, because checkpoint was created via GDB.
+      // last_continue_tuid is therefore serialized, so we can set it from that.
+      DEBUG_ASSERT(timeline.current_session().current_task()->tuid() == checkpoint_to_restore.last_continue_tuid);
+      last_query_tuid = last_continue_tuid = checkpoint_to_restore.last_continue_tuid;
+    } else {
+      // Persistent checkpoints might have been created during another process'
+      // execution which GDB is not "following" thus, we need to tell
+      // ReplayTimeline to play until it reaches |Target.pid|.
+      while (!at_followed_process(target)) {
+        ReplayResult result = timeline.replay_step_forward(RUN_CONTINUE, target.event);
+        // We should never reach the end of the trace without hitting the stop
+        // condition below.
+        DEBUG_ASSERT(result.status != REPLAY_EXITED);
+      }
+      auto t = timeline.current_session().current_task();
+      ASSERT(t, t != nullptr) << "Could not find current task at checkpoint restore";
+      last_query_tuid = last_continue_tuid = t->tuid();
+    }
+
     if (debugger_restart_checkpoint.is_explicit == Checkpoint::EXPLICIT) {
       timeline.remove_explicit_checkpoint(debugger_restart_checkpoint.mark);
     }
@@ -2155,6 +2178,40 @@ int GdbServer::open_file(Session& session, Task* continue_task, const std::strin
   }
   files.insert(make_pair(ret_fd, move(contents)));
   return ret_fd;
+}
+
+bool GdbServer::persistent_checkpoint_is_loaded(size_t unique_id) {
+  for(const auto& cp : checkpoints) {
+    if(cp.second.unique_id == unique_id) return true;
+  }
+  return false;
+}
+
+Checkpoint::Checkpoint(ReplayTimeline& timeline, TaskUid last_continue_tuid,
+                       Explicit e, const std::string& where)
+    : last_continue_tuid(last_continue_tuid), is_explicit(e), where(where) {
+  if (e == EXPLICIT) {
+    mark = timeline.add_explicit_checkpoint();
+  } else {
+    mark = timeline.mark();
+  }
+}
+
+// Used when deserializing persistent checkpoints
+Checkpoint::Checkpoint(ReplayTimeline& timeline, const CheckpointInfo& cp,
+                       ReplaySession::shr_ptr session)
+    : last_continue_tuid(cp.last_continue_tuid),
+      is_explicit(EXPLICIT),
+      where(cp.where),
+      unique_id(cp.unique_id) {
+  if (cp.non_explicit_mark_data) {
+    LOG(debug) << "checkpoint clone at " << cp.clone_data.time
+               << "; GDB checkpoint at " << cp.non_explicit_mark_data->time;
+    mark = timeline.recreate_marks_for_non_explicit(cp, session);
+  } else {
+    mark = timeline.recreate_mark_from_data(cp.clone_data, session);
+    timeline.register_mark_as_checkpoint(mark);
+  }
 }
 
 } // namespace rr

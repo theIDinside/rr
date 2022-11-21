@@ -3,6 +3,7 @@
 #ifndef RR_REPLAY_TIMELINE_H_
 #define RR_REPLAY_TIMELINE_H_
 
+#include <cstdint>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -18,6 +19,9 @@
 
 namespace rr {
 
+class CheckpointInfo;
+struct MarkData;
+
 enum RunDirection { RUN_FORWARD, RUN_BACKWARD };
 
 /**
@@ -26,9 +30,8 @@ enum RunDirection { RUN_FORWARD, RUN_BACKWARD };
  * checkpoints along this timeline and navigating to specific events.
  */
 class ReplayTimeline {
-private:
   struct InternalMark;
-
+  struct MarkKey;
 public:
   ReplayTimeline(std::shared_ptr<ReplaySession> session);
   ReplayTimeline() : breakpoints_applied(false) {}
@@ -72,7 +75,26 @@ public:
     const Registers& regs() const { return ptr->proto.regs; }
     const ExtraRegisters& extra_regs() const { return ptr->extra_regs; }
 
-    FrameTime time() const { return ptr->proto.key.trace_time; }
+    const MarkKey& get_key() const {
+      DEBUG_ASSERT(ptr != nullptr && "Mark has no data");
+      return ptr->proto.key;
+    }
+
+
+    // XXX refactor and possibly move Mark and it's internal hierarchy
+    // into it's own file, making them public, or something like that.
+    std::shared_ptr<InternalMark> get_internal() const {
+      if(!ptr) FATAL() << "Mark has no data";
+      return ptr;
+    }
+
+    bool has_rr_checkpoint() const { return ptr != nullptr && ptr->checkpoint != nullptr; }
+
+    ReplaySession::shr_ptr get_checkpoint() const {
+      DEBUG_ASSERT(ptr && "Mark has no data");
+      DEBUG_ASSERT(ptr->checkpoint && "Mark has no checkpoint");
+      return ptr->checkpoint;
+    }
 
   private:
     friend class ReplayTimeline;
@@ -259,6 +281,30 @@ public:
    */
   void apply_breakpoints_and_watchpoints();
 
+  /**
+   * Creates the two marks associated with a non-explicit GDB checkpoint. The returned `Mark` is the mark
+   * that the non-explicit checkpoint references, i.e. the one without an actual checkpoint / session.
+   */
+  Mark recreate_marks_for_non_explicit(const CheckpointInfo& cp, std::shared_ptr<ReplaySession> clone);
+
+  /**
+   * Re-create a mark from serialized MarkData `cp` and associate that mark with `session` which can be null
+   * in the case of for instance non-explicit checkpoints.
+   */
+  Mark recreate_mark_from_data(const MarkData& cp, ReplaySession::shr_ptr session);
+
+  /*
+  * Registers a free-formed Mark with this ReplayTimeline. Used when deserializing
+  * checkpoints.
+  */
+  void register_mark_as_checkpoint(Mark& m);
+
+  /**
+   * Find a session clone before `mark`.
+   * Returns the mark associated with that clone or nullptr if not found.
+   */
+  std::shared_ptr<ReplayTimeline::Mark> find_closest_mark_with_clone(const Mark& mark);
+
 private:
   /**
    * A MarkKey consists of FrameTime + Ticks + ReplayStepKey. These values
@@ -300,7 +346,6 @@ private:
     bool operator!=(const MarkKey& other) const { return !(*this == other); }
   };
   friend std::ostream& operator<<(std::ostream& s, const MarkKey& o);
-
   /**
    * All the information we'll need to construct a mark lazily.
    * Marks are expensive to create since we may have to restore
@@ -323,6 +368,7 @@ private:
     MarkKey key;
     Registers regs;
     ReturnAddressList return_addresses;
+    static ProtoMark from_serialized_markdata(const MarkData& md);
   };
 
   /**
@@ -331,13 +377,16 @@ private:
    * of two Marks.
    */
   struct InternalMark {
+    // Construct InternalMark from serialized mark data, for `owner` timeline with deserialized `session`
+    InternalMark(ReplayTimeline* owner, const MarkData& serialized, ReplaySession::shr_ptr session);
+
     InternalMark(ReplayTimeline* owner, ReplaySession& session,
                  const MarkKey& key)
         : owner(owner),
           proto(key),
           ticks_at_event_start(session.ticks_at_start_of_current_event()),
-          checkpoint_refcount(0),
-          singlestep_to_next_mark_no_signal(false) {
+          singlestep_to_next_mark_no_signal(false),
+          checkpoint_refcount(0) {
       ReplayTask* t = session.current_task();
       if (t) {
         proto = ProtoMark(key, t);
@@ -358,12 +407,24 @@ private:
     // Optional checkpoint for this Mark.
     ReplaySession::shr_ptr checkpoint;
     Ticks ticks_at_event_start;
-    // Number of users of `checkpoint`.
-    uint32_t checkpoint_refcount;
     // The next InternalMark in the ReplayTimeline's Mark vector is the result
     // of singlestepping from this mark *and* no signal is reported in the
     // break_status when doing such a singlestep.
     bool singlestep_to_next_mark_no_signal;
+
+    // Increment refcount and return incremented value
+    [[maybe_unused]] uint32_t inc_refcount() noexcept {
+      return ++checkpoint_refcount;
+    }
+
+    // Decrement refcount and return decremented value
+    [[maybe_unused]] uint32_t dec_refcount() noexcept {
+      DEBUG_ASSERT(checkpoint_refcount > 0);
+      return --checkpoint_refcount;
+    }
+  private:
+    // Number of users of `checkpoint`.
+    uint32_t checkpoint_refcount;
   };
   friend struct InternalMark;
   friend std::ostream& operator<<(std::ostream& s, const InternalMark& o);
@@ -432,6 +493,8 @@ private:
   static bool less_than(const Mark& m1, const Mark& m2);
 
   Progress estimate_progress();
+
+  static Progress estimate_progress_of(ReplaySession& session);
 
   /**
    * Called when the current session has moved forward to a new execution
