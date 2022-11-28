@@ -4,8 +4,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <limits>
 
+#include "CheckpointInfo.h"
 #include "Command.h"
 #include "ExportImportCheckpoints.h"
 #include "Flags.h"
@@ -55,7 +57,9 @@ RerunCommand RerunCommand::singleton(
     "                             another rr instance exporting checkpoints at\n"
     "                             <FILE>\n"
     "  -r, --raw                  dump registers in raw format\n"
-    "  -s, --trace-start=<EVENT>  start tracing at <EVENT>\n"
+    "  -s, --trace-start=<EVENT>  start tracing at <EVENT>. If a persistent checkpoint exists\n"
+    "                             before <EVENT> the session will spawn from that point.\n"
+    "  -i  --ignore-pcp           Ignore persistent checkpoints when running command.\n"
     "  -u, --cpu-unbound          allow replay to run on any CPU. Default is\n"
     "                             to run on the CPU stored in the trace.\n"
     "                             Note that this may diverge from the recording\n"
@@ -107,6 +111,7 @@ struct RerunFlags {
   int export_checkpoints_count;
   bool raw;
   bool cpu_unbound;
+  bool ignore_pcp;
 
   RerunFlags()
       : trace_start(0),
@@ -114,7 +119,8 @@ struct RerunFlags {
         export_checkpoints_event(0),
         export_checkpoints_count(0),
         raw(false),
-        cpu_unbound(false) {}
+        cpu_unbound(false),
+        ignore_pcp(false) {}
 };
 
 #ifdef __x86_64__
@@ -490,7 +496,8 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
     { 'f', "function", HAS_PARAMETER },
     { 'r', "raw", NO_PARAMETER },
     { 's', "trace-start", HAS_PARAMETER },
-    { 'u', "cpu-unbound", NO_PARAMETER }
+    { 'u', "cpu-unbound", NO_PARAMETER },
+    { 'i', "ignore-pcp", NO_PARAMETER }
   };
   ParsedOption opt;
   if (!Command::parse_option(args, options, &opt)) {
@@ -543,6 +550,10 @@ static bool parse_rerun_arg(vector<string>& args, RerunFlags& flags) {
     case 'u':
       flags.cpu_unbound = true;
       break;
+    case 'i':
+      flags.ignore_pcp = true;
+      break;
+    break;
     default:
       DEBUG_ASSERT(0 && "Unknown option");
   }
@@ -644,6 +655,18 @@ static int rerun(const string& trace_dir, const RerunFlags& flags, CommandForChe
     // Now that we've spawned the replay, raise our resource limits if
     // possible.
     raise_resource_limits();
+    if(!flags.ignore_pcp) {
+      const auto pcps = replay_session->get_persistent_checkpoints();
+      const auto cp = find_if(rbegin(pcps), rend(pcps), [&](const auto& cp) {
+        return flags.trace_start >= cp.event_time();
+      });
+
+      if (cp != rend(pcps)) {
+        LOG(info) << "Spawning from persistent checkpoint at time "
+                  << cp->event_time();
+        replay_session->load_checkpoint(*cp);
+      }
+    }
   } else {
     vector<ScopedFd> fds;
     if (export_checkpoints_socket.is_open()) {
