@@ -69,6 +69,8 @@ struct ExtendedTaskId {
   GdbThreadId to_debugger_thread_id() const {
     return GdbThreadId(tguid.tid(), tuid.tid());
   }
+
+  static ExtendedTaskId from(const Task& t) noexcept;
 };
 
 inline std::ostream& operator<<(std::ostream& o, const ExtendedTaskId& t) {

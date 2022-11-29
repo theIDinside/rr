@@ -21,6 +21,7 @@
 #include "ElfReader.h"
 #include "Event.h"
 #include "DebuggerExtensionCommandHandler.h"
+#include "GdbServerConnection.h"
 #include "GdbServerExpression.h"
 #include "ReplaySession.h"
 #include "ReplayTask.h"
@@ -33,6 +34,8 @@
 #include "launch_debugger.h"
 #include "log.h"
 #include "util.h"
+
+#include "CheckpointInfo.h"
 
 using namespace std;
 
@@ -50,18 +53,14 @@ GdbServer::ConnectionFlags::ConnectionFlags()
     serve_files(false),
     debugger_params_write_pipe(nullptr) {}
 
-static ExtendedTaskId extended_task_id(Task* t) {
-  return ExtendedTaskId(t->thread_group()->tguid(), t->tuid());
-}
-
 GdbServer::GdbServer(std::unique_ptr<GdbServerConnection>& connection,
                      Task* t, ReplayTimeline* timeline,
                      const Target& target)
     : dbg(std::move(connection)),
       debuggee_tguid(t->thread_group()->tguid()),
       target(target),
-      last_continue_task(extended_task_id(t)),
-      last_query_task(extended_task_id(t)),
+      last_continue_task(ExtendedTaskId::from(*t)),
+      last_query_task(ExtendedTaskId::from(*t)),
       final_event(UINT32_MAX),
       in_debuggee_end_state(false),
       failed_restart(false),
@@ -139,7 +138,7 @@ static bool matches_threadid(const ExtendedTaskId& tid,
 }
 
 static bool matches_threadid(Task* t, const GdbThreadId& target) {
-  return matches_threadid(extended_task_id(t), target);
+  return matches_threadid(ExtendedTaskId::from(*t), target);
 }
 
 static WatchType watchpoint_type(GdbRequestType req) {
@@ -180,7 +179,7 @@ static void maybe_singlestep_for_event(Task* t, GdbRequest* req) {
     req->suppress_debugger_stop = true;
     req->cont().actions.push_back(
         GdbContAction(ACTION_STEP,
-          extended_task_id(t).to_debugger_thread_id()));
+          ExtendedTaskId::from(*t).to_debugger_thread_id()));
   }
 }
 
@@ -304,7 +303,7 @@ static vector<GdbServerConnection::ThreadInfo> thread_info(const Session& sessio
   vector<GdbServerConnection::ThreadInfo> threads;
   for (auto& kv : session.tasks()) {
     threads.push_back({
-      extended_task_id(kv.second),
+      ExtendedTaskId::from(*kv.second),
       kv.second->regs().ip().register_value()
     });
   }
@@ -338,7 +337,7 @@ void GdbServer::dispatch_debugger_request(Session& session,
       vector<ExtendedTaskId> tids;
       if (state != REPORT_THREADS_DEAD && !failed_restart) {
         for (auto& kv : session.tasks()) {
-          tids.push_back(extended_task_id(kv.second));
+          tids.push_back(ExtendedTaskId::from(*kv.second));
         }
       }
       dbg->reply_get_thread_list(tids);
@@ -470,9 +469,9 @@ void GdbServer::dispatch_debugger_request(Session& session,
           : session.find_task(is_query ? last_query_task.tuid : last_continue_task.tuid);
   if (target) {
     if (is_query) {
-      last_query_task = extended_task_id(target);
+      last_query_task = ExtendedTaskId::from(*target);
     } else {
-      last_continue_task = extended_task_id(target);
+      last_continue_task = ExtendedTaskId::from(*target);
     }
   }
   // These requests query or manipulate which task is the
@@ -902,7 +901,7 @@ bool GdbServer::diverter_process_debugger_requests(
         Task* task =
             find_first_task_matching_target(diversion_session, actions);
         DEBUG_ASSERT(task != nullptr);
-        last_continue_task = extended_task_id(task);
+        last_continue_task = ExtendedTaskId::from(*task);
       }
       return diversion_refcount > 0;
     }
@@ -940,7 +939,7 @@ bool GdbServer::diverter_process_debugger_requests(
         if (req->target.tid) {
           Task* next = diversion_session.find_task(req->target.tid);
           if (next) {
-            last_query_task = extended_task_id(next);
+            last_query_task = ExtendedTaskId::from(*next);
           }
         }
         break;
@@ -1086,9 +1085,9 @@ void GdbServer::maybe_notify_stop(const Session& session,
   if (do_stop && t->thread_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
-    notify_stop_internal(session, extended_task_id(t), stop_siginfo.si_signo,
+    notify_stop_internal(session, ExtendedTaskId::from(*t), stop_siginfo.si_signo,
                          watch);
-    last_query_task = last_continue_task = extended_task_id(t);
+    last_query_task = last_continue_task = ExtendedTaskId::from(*t);
   }
 }
 
@@ -1445,7 +1444,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
     if (t->thread_group()->tguid() == debuggee_tguid) {
       interrupt_pending = false;
       notify_stop_internal(timeline_->current_session(),
-          extended_task_id(t), in_debuggee_end_state ? SIGKILL : 0);
+          ExtendedTaskId::from(*t), in_debuggee_end_state ? SIGKILL : 0);
       memset(&stop_siginfo, 0, sizeof(stop_siginfo));
       return CONTINUE_DEBUGGING;
     }
@@ -1457,7 +1456,7 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
       exit_sigkill_pending = false;
       if (req.cont().run_direction == RUN_FORWARD) {
         notify_stop_internal(timeline_->current_session(),
-            extended_task_id(t), SIGKILL);
+            ExtendedTaskId::from(*t), SIGKILL);
         memset(&stop_siginfo, 0, sizeof(stop_siginfo));
         return CONTINUE_DEBUGGING;
       }
@@ -1637,7 +1636,7 @@ void GdbServer::activate_debugger() {
   target.require_exec = false;
   target.event = completed_event;
 
-  last_query_task = last_continue_task = extended_task_id(t);
+  last_query_task = last_continue_task = ExtendedTaskId::from(*t);
 
   // Have the "checkpoint" be the original replay
   // session, and then switch over to using the cloned
@@ -1755,8 +1754,29 @@ void GdbServer::restart_session(const GdbRequest& req) {
 
   if (checkpoint_to_restore.mark) {
     timeline_->seek_to_mark(checkpoint_to_restore.mark);
-    last_query_task = last_continue_task =
-        checkpoint_to_restore.last_continue_task;
+    const auto at_followed_process = [&](const auto& target) {
+      return timeline()->current_session().current_task()->tgid() == target.pid;
+    };
+    if(at_followed_process(target)) {
+      // normal checkpoint restart branch, because checkpoint was created via GDB.
+      // last_continue_tuid is therefore serialized, so we can set it from that.
+      DEBUG_ASSERT(timeline()->current_session().current_task()->tuid() == checkpoint_to_restore.last_continue_task.tuid);
+      last_query_task = last_continue_task = checkpoint_to_restore.last_continue_task;
+    } else {
+      // Persistent checkpoints might have been created during another process'
+      // execution which GDB is not "following" thus, we need to tell
+      // ReplayTimeline to play until it reaches |Target.pid|.
+      while (!at_followed_process(target)) {
+        ReplayResult result = timeline()->replay_step_forward(RUN_CONTINUE);
+        // We should never reach the end of the trace without hitting the stop
+        // condition below.
+        DEBUG_ASSERT(result.status != REPLAY_EXITED);
+      }
+      auto t = timeline()->current_session().current_task();
+      ASSERT(t, t != nullptr) << "Could not find current task at checkpoint restore";
+      last_query_task = last_continue_task = ExtendedTaskId::from(*t);
+    }
+
     if (debugger_restart_checkpoint.is_explicit == Checkpoint::EXPLICIT) {
       timeline_->remove_explicit_checkpoint(debugger_restart_checkpoint.mark);
     }
@@ -2102,6 +2122,44 @@ static void remove_trailing_guard_pages(ReplaySession::MemoryRanges& ranges) {
       ranges.insert(MemoryRange(r.start(), end));
     }
     ptr = end;
+  }
+}
+
+bool GdbServer::persistent_checkpoint_is_loaded(size_t unique_id) {
+  for(const auto& cp : checkpoints) {
+    if(cp.second.unique_id == unique_id) return true;
+  }
+  return false;
+}
+
+Checkpoint::Checkpoint(ReplayTimeline& timeline, ExtendedTaskId last_continue_task,
+                       Explicit e, const std::string& where)
+    : last_continue_task(last_continue_task), is_explicit(e), where(where) {
+  if (e == EXPLICIT) {
+    mark = timeline.add_explicit_checkpoint();
+  } else {
+    mark = timeline.mark();
+    const auto prior = timeline.find_closest_mark_with_clone(mark);
+    if(prior) {
+      prior->get_internal()->inc_refcount();
+    }
+  }
+}
+
+// Used when deserializing persistent checkpoints
+Checkpoint::Checkpoint(ReplayTimeline& timeline, const CheckpointInfo& cp,
+                       ReplaySession::shr_ptr session)
+    : last_continue_task(cp.last_continue_task),
+      is_explicit(EXPLICIT),
+      where(cp.where),
+      unique_id(cp.unique_id) {
+  if (cp.non_explicit_mark_data) {
+    LOG(debug) << "checkpoint clone at " << cp.clone_data.time
+               << "; GDB checkpoint at " << cp.non_explicit_mark_data->time;
+    mark = timeline.recreate_marks_for_non_explicit(cp, session);
+  } else {
+    mark = timeline.recreate_mark_from_data(cp.clone_data, session);
+    timeline.register_mark_as_checkpoint(mark);
   }
 }
 

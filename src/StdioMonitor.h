@@ -22,7 +22,7 @@ public:
    */
   StdioMonitor(int original_fd) : original_fd(original_fd) {}
 
-  virtual Type type() override { return Stdio; }
+  virtual Type type() const override { return Stdio; }
 
   /**
    * Make writes to stdout/stderr blocking, to avoid nondeterminism in the
@@ -43,7 +43,9 @@ public:
   virtual void did_write(Task* t, const std::vector<Range>& ranges,
                          LazyOffset&) override;
 
+
 private:
+  void serialize_type(pcp::FileMonitor::Builder& builder) const noexcept override;
   int original_fd;
 };
 

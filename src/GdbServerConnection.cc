@@ -58,6 +58,11 @@ static bool request_needs_immediate_response(const GdbRequest* req) {
 }
 #endif
 
+/*static*/
+ExtendedTaskId ExtendedTaskId::from(const Task& t) noexcept {
+  return ExtendedTaskId(t.thread_group()->tguid(), t.tuid());
+}
+
 GdbServerConnection::GdbServerConnection(ThreadGroupUid tguid, const Features& features)
     : tguid(tguid),
       cpu_features_(0),

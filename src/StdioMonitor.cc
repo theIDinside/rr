@@ -38,4 +38,8 @@ void StdioMonitor::did_write(Task* t, const std::vector<Range>& ranges,
   }
 }
 
+void StdioMonitor::serialize_type(pcp::FileMonitor::Builder& builder) const noexcept {
+  builder.setStdio(original_fd);
+}
+
 } // namespace rr

@@ -66,6 +66,9 @@ public:
 
   virtual std::string invoke(GdbServer& gdb_server, Task* t,
                              const std::vector<std::string>& args) override {
+    if (!gdb_server.timeline()) {
+      return "Command requires a full debugging session.";
+    }
     return invoker(gdb_server, t, args);
   }
 
