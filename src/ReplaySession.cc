@@ -1952,6 +1952,15 @@ ReplayTask* ReplaySession::setup_replay_one_trace_frame(ReplayTask* t) {
   return t;
 }
 
+bool ReplaySession::next_step_is_successful_clone_syscall_exit() {
+  const Event& ev = trace_frame.event();
+  return current_step.action == TSTEP_NONE &&
+         ev.is_syscall_event() &&
+         ev.Syscall().is_clone() &&
+         ev.Syscall().state == EXITING_SYSCALL &&
+         !trace_frame.regs().syscall_failed();
+}
+
 bool ReplaySession::next_step_is_successful_exec_syscall_exit() {
   const Event& ev = trace_frame.event();
   return current_step.action == TSTEP_NONE &&

@@ -110,6 +110,8 @@ struct BreakStatus {
   bool approaching_ticks_target;
   // True when we stopped because |task| is about to exit.
   bool task_exit;
+  // True (and containing a positive value) when we stopped because |task| was created
+  int task_created{-1};
 
   // True when we stopped because we hit a software or hardware breakpoint at
   // |task|'s current ip().
@@ -136,7 +138,7 @@ struct BreakStatus {
 
   bool any_break() {
     return !watchpoints_hit.empty() || signal || breakpoint_hit ||
-           singlestep_complete || approaching_ticks_target;
+           singlestep_complete || approaching_ticks_target || task_created != -1;
   }
 
   Task* task() const { return task_context.task; }

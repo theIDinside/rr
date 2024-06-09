@@ -990,6 +990,17 @@ static bool is_last_thread_exit(const BreakStatus& break_status) {
          break_status.task_context.thread_group->task_set().size() <= 1;
 }
 
+static Task* is_creating_thread(ReplayTimeline* timeline) {
+  if(!timeline) {
+    return nullptr;
+  }
+  Task* t = timeline->current_session().current_task();
+  if (!t) {
+    return nullptr;
+  }
+  return timeline->current_session().next_step_is_successful_clone_syscall_exit() ? t : nullptr;
+}
+
 static Task* is_in_exec(ReplayTimeline* timeline) {
   if (!timeline) {
     return nullptr;
@@ -1083,6 +1094,17 @@ void GdbServer::maybe_notify_stop(const Session& session,
     t = in_exec_task;
     LOG(debug) << "Stopping at exec";
   }
+
+  Task* is_cloning_task = is_creating_thread(timeline_);
+  if(is_cloning_task) {
+    do_stop = true;
+    memset(&stop_siginfo, 0, sizeof(stop_siginfo));
+    stop_siginfo.si_signo = SIGTRAP;
+    t = is_cloning_task;
+    LOG(debug) << "Stopping at clone (thread creation); task: " << t->rec_tid;
+    snprintf(watch, sizeof(watch) - 1, "create:;");
+  }
+
   if (do_stop && t->thread_group()->tguid() == debuggee_tguid) {
     /* Notify the debugger and process any new requests
      * that might have triggered before resuming. */
@@ -1470,6 +1492,9 @@ GdbServer::ContinueOrStop GdbServer::debug_one_step(
             debuggee_tguid) {
       // Don't go any further forward. maybe_notify_stop will generate a
       // stop.
+      result = ReplayResult();
+    } else if(is_creating_thread(timeline_) && require_timeline_current_task()->thread_group()->tguid() ==
+            debuggee_tguid) {
       result = ReplayResult();
     } else {
       int signal_to_deliver;

@@ -230,6 +230,10 @@ public:
   bool next_step_is_successful_exec_syscall_exit();
 
   /**
+   * Returns true if the next step for this session is to exit a clone syscall 
+   */
+  bool next_step_is_successful_clone_syscall_exit();
+  /**
    * The current ReplayStepKey.
    */
   ReplayStepKey current_step_key() const {
