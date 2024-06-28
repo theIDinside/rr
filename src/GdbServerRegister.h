@@ -153,6 +153,78 @@ enum GdbServerRegister {
   DREG_64_YMM13H,
   DREG_64_YMM14H,
   DREG_64_YMM15H,
+  DREG_64_XMM16,
+  DREG_64_XMM17,
+  DREG_64_XMM18,
+  DREG_64_XMM19,
+  DREG_64_XMM20,
+  DREG_64_XMM21,
+  DREG_64_XMM22,
+  DREG_64_XMM23,
+  DREG_64_XMM24,
+  DREG_64_XMM25,
+  DREG_64_XMM26,
+  DREG_64_XMM27,
+  DREG_64_XMM28,
+  DREG_64_XMM29,
+  DREG_64_XMM30,
+  DREG_64_XMM31,
+  DREG_64_YMM16H,
+  DREG_64_YMM17H,
+  DREG_64_YMM18H,
+  DREG_64_YMM19H,
+  DREG_64_YMM20H,
+  DREG_64_YMM21H,
+  DREG_64_YMM22H,
+  DREG_64_YMM23H,
+  DREG_64_YMM24H,
+  DREG_64_YMM25H,
+  DREG_64_YMM26H,
+  DREG_64_YMM27H,
+  DREG_64_YMM28H,
+  DREG_64_YMM29H,
+  DREG_64_YMM30H,
+  DREG_64_YMM31H,
+  DREG_64_ZMM0H,
+  DREG_64_ZMM1H,
+  DREG_64_ZMM2H,
+  DREG_64_ZMM3H,
+  DREG_64_ZMM4H,
+  DREG_64_ZMM5H,
+  DREG_64_ZMM6H,
+  DREG_64_ZMM7H,
+  DREG_64_ZMM8H,
+  DREG_64_ZMM9H,
+  DREG_64_ZMM10H,
+  DREG_64_ZMM11H,
+  DREG_64_ZMM12H,
+  DREG_64_ZMM13H,
+  DREG_64_ZMM14H,
+  DREG_64_ZMM15H,
+  DREG_64_ZMM16H,
+  DREG_64_ZMM17H,
+  DREG_64_ZMM18H,
+  DREG_64_ZMM19H,
+  DREG_64_ZMM20H,
+  DREG_64_ZMM21H,
+  DREG_64_ZMM22H,
+  DREG_64_ZMM23H,
+  DREG_64_ZMM24H,
+  DREG_64_ZMM25H,
+  DREG_64_ZMM26H,
+  DREG_64_ZMM27H,
+  DREG_64_ZMM28H,
+  DREG_64_ZMM29H,
+  DREG_64_ZMM30H,
+  DREG_64_ZMM31H,
+  DREG_64_K0,
+  DREG_64_K1,
+  DREG_64_K2,
+  DREG_64_K3,
+  DREG_64_K4,
+  DREG_64_K5,
+  DREG_64_K6,
+  DREG_64_K7,
   DREG_64_PKRU,
   DREG_NUM_LINUX_X86_64,
   // Last register we can find in user_regs_struct (except for orig_rax).
@@ -232,6 +304,189 @@ enum GdbServerRegister {
 
   DREG_NUM_LINUX_AARCH64 = DREG_FPCR + 1,
 };
+
+constexpr const char* reg_name(GdbServerRegister reg) {
+  switch (reg) {
+    case DREG_64_XMM0:
+      return "DREG_64_XMM0";
+    case DREG_64_XMM1:
+      return "DREG_64_XMM1";
+    case DREG_64_XMM2:
+      return "DREG_64_XMM2";
+    case DREG_64_XMM3:
+      return "DREG_64_XMM3";
+    case DREG_64_XMM4:
+      return "DREG_64_XMM4";
+    case DREG_64_XMM5:
+      return "DREG_64_XMM5";
+    case DREG_64_XMM6:
+      return "DREG_64_XMM6";
+    case DREG_64_XMM7:
+      return "DREG_64_XMM7";
+    case DREG_64_XMM8:
+      return "DREG_64_XMM8";
+    case DREG_64_XMM9:
+      return "DREG_64_XMM9";
+    case DREG_64_XMM10:
+      return "DREG_64_XMM10";
+    case DREG_64_XMM11:
+      return "DREG_64_XMM11";
+    case DREG_64_XMM12:
+      return "DREG_64_XMM12";
+    case DREG_64_XMM13:
+      return "DREG_64_XMM13";
+    case DREG_64_XMM14:
+      return "DREG_64_XMM14";
+    case DREG_64_XMM15:
+      return "DREG_64_XMM15";
+    case DREG_64_YMM0H:
+      return "DREG_64_YMM0H";
+    case DREG_64_YMM1H:
+      return "DREG_64_YMM1H";
+    case DREG_64_YMM2H:
+      return "DREG_64_YMM2H";
+    case DREG_64_YMM3H:
+      return "DREG_64_YMM3H";
+    case DREG_64_YMM4H:
+      return "DREG_64_YMM4H";
+    case DREG_64_YMM5H:
+      return "DREG_64_YMM5H";
+    case DREG_64_YMM6H:
+      return "DREG_64_YMM6H";
+    case DREG_64_YMM7H:
+      return "DREG_64_YMM7H";
+    case DREG_64_YMM8H:
+      return "DREG_64_YMM8H";
+    case DREG_64_YMM9H:
+      return "DREG_64_YMM9H";
+    case DREG_64_YMM10H:
+      return "DREG_64_YMM10H";
+    case DREG_64_YMM11H:
+      return "DREG_64_YMM11H";
+    case DREG_64_YMM12H:
+      return "DREG_64_YMM12H";
+    case DREG_64_YMM13H:
+      return "DREG_64_YMM13H";
+    case DREG_64_YMM14H:
+      return "DREG_64_YMM14H";
+    case DREG_64_YMM15H:
+      return "DREG_64_YMM15H";
+    case DREG_64_XMM16:
+      return "DREG_64_XMM16";
+    case DREG_64_XMM17:
+      return "DREG_64_XMM17";
+    case DREG_64_XMM18:
+      return "DREG_64_XMM18";
+    case DREG_64_XMM19:
+      return "DREG_64_XMM19";
+    case DREG_64_XMM20:
+      return "DREG_64_XMM20";
+    case DREG_64_XMM21:
+      return "DREG_64_XMM21";
+    case DREG_64_XMM22:
+      return "DREG_64_XMM22";
+    case DREG_64_XMM23:
+      return "DREG_64_XMM23";
+    case DREG_64_XMM24:
+      return "DREG_64_XMM24";
+    case DREG_64_XMM25:
+      return "DREG_64_XMM25";
+    case DREG_64_XMM26:
+      return "DREG_64_XMM26";
+    case DREG_64_XMM27:
+      return "DREG_64_XMM27";
+    case DREG_64_XMM28:
+      return "DREG_64_XMM28";
+    case DREG_64_XMM29:
+      return "DREG_64_XMM29";
+    case DREG_64_XMM30:
+      return "DREG_64_XMM30";
+    case DREG_64_XMM31:
+      return "DREG_64_XMM31";
+    case DREG_64_K0:
+      return "DREG_64_K0";
+    case DREG_64_K1:
+      return "DREG_64_K1";
+    case DREG_64_K2:
+      return "DREG_64_K2";
+    case DREG_64_K3:
+      return "DREG_64_K3";
+    case DREG_64_K4:
+      return "DREG_64_K4";
+    case DREG_64_K5:
+      return "DREG_64_K5";
+    case DREG_64_K6:
+      return "DREG_64_K6";
+    case DREG_64_K7:
+      return "DREG_64_K7";
+    case DREG_64_ZMM0H:
+      return "DREG_64_ZMM0H";
+    case DREG_64_ZMM1H:
+      return "DREG_64_ZMM1H";
+    case DREG_64_ZMM2H:
+      return "DREG_64_ZMM2H";
+    case DREG_64_ZMM3H:
+      return "DREG_64_ZMM3H";
+    case DREG_64_ZMM4H:
+      return "DREG_64_ZMM4H";
+    case DREG_64_ZMM5H:
+      return "DREG_64_ZMM5H";
+    case DREG_64_ZMM6H:
+      return "DREG_64_ZMM6H";
+    case DREG_64_ZMM7H:
+      return "DREG_64_ZMM7H";
+    case DREG_64_ZMM8H:
+      return "DREG_64_ZMM8H";
+    case DREG_64_ZMM9H:
+      return "DREG_64_ZMM9H";
+    case DREG_64_ZMM10H:
+      return "DREG_64_ZMM10H";
+    case DREG_64_ZMM11H:
+      return "DREG_64_ZMM11H";
+    case DREG_64_ZMM12H:
+      return "DREG_64_ZMM12H";
+    case DREG_64_ZMM13H:
+      return "DREG_64_ZMM13H";
+    case DREG_64_ZMM14H:
+      return "DREG_64_ZMM14H";
+    case DREG_64_ZMM15H:
+      return "DREG_64_ZMM15H";
+    case DREG_64_ZMM16H:
+      return "DREG_64_ZMM16H";
+    case DREG_64_ZMM17H:
+      return "DREG_64_ZMM17H";
+    case DREG_64_ZMM18H:
+      return "DREG_64_ZMM18H";
+    case DREG_64_ZMM19H:
+      return "DREG_64_ZMM19H";
+    case DREG_64_ZMM20H:
+      return "DREG_64_ZMM20H";
+    case DREG_64_ZMM21H:
+      return "DREG_64_ZMM21H";
+    case DREG_64_ZMM22H:
+      return "DREG_64_ZMM22H";
+    case DREG_64_ZMM23H:
+      return "DREG_64_ZMM23H";
+    case DREG_64_ZMM24H:
+      return "DREG_64_ZMM24H";
+    case DREG_64_ZMM25H:
+      return "DREG_64_ZMM25H";
+    case DREG_64_ZMM26H:
+      return "DREG_64_ZMM26H";
+    case DREG_64_ZMM27H:
+      return "DREG_64_ZMM27H";
+    case DREG_64_ZMM28H:
+      return "DREG_64_ZMM28H";
+    case DREG_64_ZMM29H:
+      return "DREG_64_ZMM29H";
+    case DREG_64_ZMM30H:
+      return "DREG_64_ZMM30H";
+    case DREG_64_ZMM31H:
+      return "DREG_64_ZMM31H";
+    default:
+      return "uninteresting";
+  }
+}
 
 } // namespace rr
 

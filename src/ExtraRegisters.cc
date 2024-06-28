@@ -4,11 +4,11 @@
 
 #include <string.h>
 
+#include "GdbServerRegister.h"
 #include "ReplayTask.h"
 #include "core.h"
 #include "log.h"
 #include "util.h"
-
 using namespace std;
 
 namespace rr {
@@ -66,8 +66,11 @@ static bool reg_in_range(GdbServerRegister regno, GdbServerRegister low, GdbServ
   return true;
 }
 
-static const int AVX_FEATURE_BIT = 2;
-static const int PKRU_FEATURE_BIT = 9;
+static constexpr int AVX_FEATURE_BIT = 2;
+static constexpr int AVX_OPMASK_FEATURE_BIT = 5;
+static constexpr int AVX_ZMM_HI256_FEATURE_BIT = 6;
+static constexpr int AVX_ZMM_HI16_FEATURE_BIT = 7;
+static constexpr int PKRU_FEATURE_BIT = 9;
 
 static const uint64_t PKRU_FEATURE_MASK = 1 << PKRU_FEATURE_BIT;
 
@@ -77,6 +80,40 @@ static const size_t xsave_header_end = xsave_header_offset + xsave_header_size;
 // This is always at 576 since AVX is always the first optional feature,
 // if present.
 static const size_t AVX_xsave_offset = 576;
+// Offsets specified in 
+// Intel® Architecture Instruction Set Extensions Programming Reference:
+// https://www.intel.com/content/dam/develop/external/us/en/documents/319433-024-697869.pdf#G7.2147959
+static constexpr uint32_t AVX512_MASK_xsave_offset = 1088;
+static constexpr uint32_t AVX512_ZMM0_xsave_offset = 1152;
+// At this offset, the entire ZMM16..31 registers live, containing also the XMM/YMM "within" them
+static constexpr uint32_t AVX512_ZMM16_xsave_offset = 1664;
+
+static bool high16_zmm_registers(GdbServerRegister reg, RegData& out) noexcept {
+  // Remember: We re-arranged K0..K7 to be after ZMM16..31 to simplify this part substantially
+  static constexpr auto XMM = 0b00;
+  static constexpr auto YMM = 0b01;
+  static constexpr auto ZMM = 0b11;
+  const auto v = (reg - DREG_64_XMM16) >> 4;
+  switch(v) {
+    case XMM: {
+      out.size = 16;
+      out.offset = AVX512_ZMM16_xsave_offset + ((reg - DREG_64_XMM16) * 64);
+      return true;
+    }
+    case YMM: {
+      out.size = 16;
+      out.offset = (AVX512_ZMM16_xsave_offset + 16) + ((reg - DREG_64_YMM16H) * 64);
+      return true;
+    }
+    case ZMM: {
+      out.size = 32;
+      out.offset = (AVX512_ZMM16_xsave_offset + 32) + ((reg - DREG_64_ZMM16H) * 64);
+      return true;
+    }
+    default:
+      return false;
+  }  
+}
 
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
@@ -125,6 +162,23 @@ static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) 
 
   if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
                    16, &result)) {
+    result.xsave_feature_bit = AVX_FEATURE_BIT;
+    return result;
+  }
+
+  if (reg_in_range(regno, DREG_64_K0, DREG_64_K7, AVX512_MASK_xsave_offset, 8,
+                   8, &result)) {
+    result.xsave_feature_bit = AVX_FEATURE_BIT;
+    return result;
+  }
+
+  if(reg_in_range(regno, DREG_64_ZMM0H, DREG_64_ZMM15H, AVX512_ZMM0_xsave_offset, 32, 32, &result)) {
+    result.xsave_feature_bit = AVX_FEATURE_BIT;
+    return result;
+  }
+
+  // AVX-512 Upper 16 ZMM registers. They represent full ZMM registers and so xmm/ymmh/zmmh is contigous
+  if(high16_zmm_registers(regno, result)) {
     result.xsave_feature_bit = AVX_FEATURE_BIT;
     return result;
   }
@@ -230,6 +284,46 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
   } else {
     DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
     memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
+  }
+  if ((regno >= DREG_64_XMM0 && regno <= DREG_64_XMM15) ||
+      (regno >= DREG_64_YMM0H && regno <= DREG_64_XMM31) ||
+      (regno >= DREG_64_ZMM0H && regno <= DREG_64_ZMM31H)) {
+    for (auto i = 0u; i < data_.size(); ++i) {
+      auto contiguous = 16;
+      while (contiguous > 0 && data_[i] == 0x0a) {
+        --contiguous;
+        ++i;
+      }
+      if (contiguous == 0) {
+        auto j = i - 16;
+        contiguous = 16;
+        while (contiguous > 0 && data_[i] == 0x0a) {
+          --contiguous;
+          ++i;
+        }
+        if (contiguous == 0) {
+          LOG(debug) << "found 32 consecutive 0x0a bytes at 0x" << std::hex
+                     << i - 32 << std::dec;
+        } else {
+          LOG(debug) << "found 16 bytes of 0x0a at 0x" << std::hex << j
+                     << std::dec;
+        }
+        contiguous = 16;
+      }
+    }
+    
+    bool printed_digit = false;
+    char out_buf[257];
+    char* p = out_buf;
+    for (int i = reg_data.size - 1; i >= 0; --i) {
+      if (!printed_digit && !buf[i] && i > 0) {
+        continue;
+      }
+      p += sprintf(p, printed_digit ? "%02x" : "%x", buf[i]);
+      printed_digit = true;
+    }
+    LOG(debug) << " register " << reg_name(regno) << " at 0x" << std::hex
+               << reg_data.offset << "..." << reg_data.offset + reg_data.size << "=" << std::string{out_buf, p} << std::dec;
   }
   return reg_data.size;
 }

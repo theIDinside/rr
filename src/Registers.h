@@ -53,7 +53,7 @@ const uintptr_t AARCH64_DBG_SPSR_11 = 1 << 11;
  */
 class Registers {
 public:
-  enum { MAX_SIZE = 16 };
+  enum { MAX_SIZE = 32 };
 
   Registers(SupportedArch a = x86) : arch_(a) {
     memset(&u, 0, sizeof(u));
@@ -125,7 +125,7 @@ public:
                       size_t size);
 
 #define ARCH_SWITCH_CASE(rettype, x86case, x64case, arm64case)                 \
-(([=](void) -> rettype {                                                       \
+(([=, this](void) -> rettype {                                                       \
   switch (arch()) {                                                            \
     default:                                                                   \
       DEBUG_ASSERT(0 && "unknown architecture");                               \
