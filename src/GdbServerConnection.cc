@@ -1,5 +1,6 @@
 /* -*- Mode: C++; tab-width: 8; c-basic-offset: 2; indent-tabs-mode: nil; -*- */
 
+#include "util.h"
 #define REVERSE_EXECUTION
 
 /**
@@ -81,6 +82,9 @@ static uint32_t get_cpu_features(SupportedArch arch) {
       cpu_features = arch == x86_64 ? GdbServerConnection::CPU_X86_64 : 0;
       unsigned int AVX_cpuid_flags = AVX_FEATURE_FLAG | OSXSAVE_FEATURE_FLAG;
       auto cpuid_data = cpuid(CPUID_GETEXTENDEDFEATURES, 0);
+      if((cpuid_data.ebx & AVX_512_FOUNDATION_FLAG) == AVX_512_FOUNDATION_FLAG) {
+        cpu_features |= GdbServerConnection::CPU_AVX512;
+      }
       if ((cpuid_data.ecx & PKU_FEATURE_FLAG) == PKU_FEATURE_FLAG) {
         // PKU (Skylake) implies AVX (Sandy Bridge).
         cpu_features |= GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_PKU;
@@ -514,6 +518,8 @@ static const char* target_description_name(uint32_t cpu_features) {
       return "i386-avx-linux.xml";
     case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_AVX:
       return "amd64-avx-linux.xml";
+    case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_AVX | GdbServerConnection::CPU_AVX512:
+      return "amd64-avx512-linux.xml";
     case GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:
       return "i386-pkeys-linux.xml";
     case GdbServerConnection::CPU_X86_64 | GdbServerConnection::CPU_PKU | GdbServerConnection::CPU_AVX:

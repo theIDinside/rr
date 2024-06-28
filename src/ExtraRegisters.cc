@@ -4,6 +4,7 @@
 
 #include <string.h>
 
+#include "GdbServerRegister.h"
 #include "ReplayTask.h"
 #include "core.h"
 #include "log.h"
@@ -77,6 +78,14 @@ static const size_t xsave_header_end = xsave_header_offset + xsave_header_size;
 // This is always at 576 since AVX is always the first optional feature,
 // if present.
 static const size_t AVX_xsave_offset = 576;
+static constexpr auto AVX512_MASK_OFFSET() noexcept {
+  return AVX_xsave_offset + 16 * (AVX512_MASK_REGISTER_START - DREG_64_YMM0H);
+}
+
+static constexpr auto AVX512_ZMM_OFFSET() noexcept {
+  constexpr auto sz = (DREG_64_K7 - DREG_64_K0 * 8);
+  return AVX512_MASK_OFFSET() + sz;
+}
 
 // Return the size and data location of register |regno|.
 // If we can't read the register, returns -1 in 'offset'.
@@ -123,8 +132,19 @@ static RegData xsave_register_data(SupportedArch arch, GdbServerRegister regno) 
     return result;
   }
 
-  if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_YMM15H, AVX_xsave_offset, 16,
+  if (reg_in_range(regno, DREG_64_YMM0H, DREG_64_XMM31, AVX_xsave_offset, 16,
                    16, &result)) {
+    result.xsave_feature_bit = AVX_FEATURE_BIT;
+    return result;
+  }
+
+  if (reg_in_range(regno, DREG_64_K0, DREG_64_K7, AVX512_MASK_OFFSET(), 8,
+                   8, &result)) {
+    result.xsave_feature_bit = AVX_FEATURE_BIT;
+    return result;
+  }
+
+  if(reg_in_range(regno, DREG_64_ZMM0H, DREG_64_ZMM31H, 0x480, 32, 32, &result)) {
     result.xsave_feature_bit = AVX_FEATURE_BIT;
     return result;
   }
@@ -230,6 +250,46 @@ size_t ExtraRegisters::read_register(uint8_t* buf, GdbServerRegister regno,
   } else {
     DEBUG_ASSERT(size_t(reg_data.offset + reg_data.size) <= data_.size());
     memcpy(buf, data_.data() + reg_data.offset, reg_data.size);
+  }
+  if ((regno >= DREG_64_XMM0 && regno <= DREG_64_XMM15) ||
+      (regno >= DREG_64_YMM0H && regno <= DREG_64_XMM31) ||
+      (regno >= DREG_64_ZMM0H && regno <= DREG_64_ZMM31H)) {
+    for (auto i = 0u; i < data_.size(); ++i) {
+      auto contiguous = 16;
+      while (contiguous > 0 && data_[i] == 0x0a) {
+        --contiguous;
+        ++i;
+      }
+      if (contiguous == 0) {
+        auto j = i - 16;
+        contiguous = 16;
+        while (contiguous > 0 && data_[i] == 0x0a) {
+          --contiguous;
+          ++i;
+        }
+        if (contiguous == 0) {
+          LOG(debug) << "found 32 consecutive 0x0a bytes at 0x" << std::hex
+                     << i - 32 << std::dec;
+        } else {
+          LOG(debug) << "found 16 bytes of 0x0a at 0x" << std::hex << j
+                     << std::dec;
+        }
+        contiguous = 16;
+      }
+    }
+    
+    bool printed_digit = false;
+    char out_buf[257];
+    char* p = out_buf;
+    for (int i = reg_data.size - 1; i >= 0; --i) {
+      if (!printed_digit && !buf[i] && i > 0) {
+        continue;
+      }
+      p += sprintf(p, printed_digit ? "%02x" : "%x", buf[i]);
+      printed_digit = true;
+    }
+    LOG(debug) << " register " << reg_name(regno) << " at 0x" << std::hex
+               << reg_data.offset << "..." << reg_data.offset + reg_data.size << "=" << std::string{out_buf, p} << std::dec;
   }
   return reg_data.size;
 }

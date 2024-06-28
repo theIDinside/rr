@@ -191,12 +191,29 @@ void GdbServer::dispatch_regs_request(const Registers& regs,
   // Those descriptions are controlled by GdbServerConnection::cpu_features().
   bool have_PKU = dbg->cpu_features() & GdbServerConnection::CPU_PKU;
   bool have_AVX = dbg->cpu_features() & GdbServerConnection::CPU_AVX;
+  bool have_AVX512 = dbg->cpu_features() & GdbServerConnection::CPU_AVX512;
   switch (regs.arch()) {
     case x86:
-      end = have_PKU ? DREG_PKRU : (have_AVX ? DREG_YMM7H : DREG_ORIG_EAX);
+      if(have_AVX512) {
+        end = DREG_PKRU;
+      } else if(have_PKU) {
+        end = DREG_PKRU;
+      } else if(have_AVX) {
+        end = DREG_YMM7H;
+      } else {
+        end = DREG_ORIG_EAX;
+      }
       break;
     case x86_64:
-      end = have_PKU ? DREG_64_PKRU : (have_AVX ? DREG_64_YMM15H : DREG_GS_BASE);
+      if(have_AVX512) {
+        end = DREG_64_ZMM31H;
+      } else if(have_PKU) {
+        end = DREG_64_PKRU;
+      } else if(have_AVX) {
+        end = DREG_64_YMM15H;
+      } else {
+        end = DREG_GS_BASE;
+      }
       break;
     case aarch64:
       end = DREG_FPCR;

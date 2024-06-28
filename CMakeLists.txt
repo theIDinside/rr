@@ -763,6 +763,7 @@ set(RR_GDB_RESOURCES
   32bit-sse.xml
   32bit-pkeys.xml
   64bit-avx.xml
+  64bit-avx512.xml
   64bit-core.xml
   64bit-linux.xml
   64bit-seg.xml
@@ -770,6 +771,7 @@ set(RR_GDB_RESOURCES
   64bit-pkeys.xml
   amd64-pkeys-linux.xml
   amd64-avx-linux.xml
+  amd64-avx512-linux.xml
   amd64-linux.xml
   i386-pkeys-linux.xml
   i386-avx-linux.xml
