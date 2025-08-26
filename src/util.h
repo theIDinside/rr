@@ -16,6 +16,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #if defined(__i386__) || defined(__x86_64__)
@@ -691,6 +692,49 @@ void base_name(std::string& s);
 std::optional<int> read_perf_event_paranoid();
 
 bool virtual_address_size_supported(uint8_t bit_size);
+
+// For cases where want copyable unique items. Responsibility on the caller to
+// beware of slicing.
+template <typename T> class OwnPtr {
+  // *not* a catch all, but a basic one.
+  static_assert(!std::is_polymorphic_v<T>,
+                "T can be determined at compile time to be sliceable.");
+  std::unique_ptr<T> ptr;
+
+public:
+  OwnPtr(std::unique_ptr<T> ptr) : ptr(std::move(ptr)) {}
+  OwnPtr() : ptr(nullptr) {}
+  OwnPtr(const OwnPtr& other)
+      : ptr(other.ptr ? std::unique_ptr<T>{ new T{ *other.ptr } } : nullptr) {}
+  OwnPtr& operator=(OwnPtr& other) {
+    if (this == &other) {
+      return *this;
+    }
+    ptr = other.ptr ? std::unique_ptr<T>{ new T{ *other.ptr } } : nullptr;
+    return *this;
+  }
+
+  OwnPtr(OwnPtr&& other) noexcept : ptr(std::move(other.ptr)) {}
+  OwnPtr& operator=(OwnPtr&& other) noexcept {
+    if (this == &other) {
+      return *this;
+    }
+    ptr = std::move(other.ptr);
+    return *this;
+  }
+
+  operator std::unique_ptr<T>&() { return ptr; }
+
+  operator const std::unique_ptr<T>&() const { return ptr; }
+
+  T* operator->() { return ptr.get(); }
+  const T* operator->() const { return ptr.get(); }
+
+  T& operator*() { return *ptr; }
+  const T& operator*() const { return *ptr; }
+
+  operator bool() const { return ptr.get(); }
+};
 
 } // namespace rr
 

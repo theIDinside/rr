@@ -65,55 +65,23 @@ struct TaskContext {
  * In general, multiple break reasons can apply simultaneously.
  */
 struct BreakStatus {
-  BreakStatus()
-      : task_context(TaskContext()),
-        breakpoint_hit(false),
-        singlestep_complete(false),
-        approaching_ticks_target(false),
-        task_exit(false) {}
-  BreakStatus(const BreakStatus& other)
-      : task_context(other.task_context),
-        watchpoints_hit(other.watchpoints_hit),
-        signal(other.signal
-                   ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
-                   : nullptr),
-        breakpoint_hit(other.breakpoint_hit),
-        singlestep_complete(other.singlestep_complete),
-        approaching_ticks_target(other.approaching_ticks_target),
-        task_exit(other.task_exit) {}
-  const BreakStatus& operator=(const BreakStatus& other) {
-    task_context = other.task_context;
-    watchpoints_hit = other.watchpoints_hit;
-    signal = other.signal
-                 ? std::unique_ptr<siginfo_t>(new siginfo_t(*other.signal))
-                 : nullptr;
-    breakpoint_hit = other.breakpoint_hit;
-    singlestep_complete = other.singlestep_complete;
-    approaching_ticks_target = other.approaching_ticks_target;
-    task_exit = other.task_exit;
-    return *this;
-  }
-
-  BreakStatus(BreakStatus&&) noexcept = default;
-  BreakStatus& operator=(BreakStatus&&) = default;
-
   // The triggering TaskContext.
-  TaskContext task_context;
+  TaskContext task_context{ TaskContext() };
   // List of watchpoints hit; any watchpoint hit causes a stop after the
   // instruction that triggered the watchpoint has completed.
   std::vector<WatchConfig> watchpoints_hit;
   // When non-null, we stopped because a signal was delivered to |task|.
-  std::unique_ptr<siginfo_t> signal;
+  OwnPtr<siginfo_t> signal{ nullptr };
   // True when we stopped because we hit a software breakpoint at |task|'s
   // current ip().
-  bool breakpoint_hit;
+  bool breakpoint_hit{ false };
   // True when we stopped because a singlestep completed in |task|.
-  bool singlestep_complete;
+  bool singlestep_complete{ false };
   // True when we stopped because we got too close to the specified ticks
   // target.
-  bool approaching_ticks_target;
+  bool approaching_ticks_target{ false };
   // True when we stopped because |task| is about to exit.
-  bool task_exit;
+  bool task_exit{ false };
 
   // True when we stopped because we hit a software or hardware breakpoint at
   // |task|'s current ip().
