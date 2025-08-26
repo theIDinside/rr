@@ -94,6 +94,9 @@ struct BreakStatus {
     return *this;
   }
 
+  BreakStatus(BreakStatus&&) noexcept = default;
+  BreakStatus& operator=(BreakStatus&&) = default;
+
   // The triggering TaskContext.
   TaskContext task_context;
   // List of watchpoints hit; any watchpoint hit causes a stop after the
