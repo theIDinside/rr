@@ -59,6 +59,7 @@ public:
    */
   void validate_regs(uint32_t flags = 0);
   const TraceFrame& current_trace_frame() const;
+  const TraceFrame& last_replayed_trace_frame() const;
   FrameTime current_frame_time() const;
 
   /** Restore the next chunk of this frame's saved data from the trace to this. */

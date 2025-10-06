@@ -442,6 +442,7 @@ void ReplaySession::advance_to_next_trace_frame() {
                              trace_frame.ticks(), trace_frame.monotonic_time());
     return;
   }
+  last_replayed = trace_frame;
 
   trace_frame = trace_in.read_frame();
 }
