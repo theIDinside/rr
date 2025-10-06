@@ -600,6 +600,74 @@ else()
   set(BLAKE_ARCH_DIR third-party/blake2/sse)
 endif()
 
+set(RR_REPLAY_LIB_SOURCES
+  src/AddressSpace.cc
+  src/AutoRemoteSyscalls.cc
+  src/Command.cc
+  src/CompressedReader.cc
+  src/CompressedWriter.cc
+  src/ContextSwitchEvent.cc
+  src/CPUIDBugDetector.cc
+  src/CPUs.cc
+  src/DiversionSession.cc
+  src/DumpCommand.cc
+  src/Dwarf.cc
+  src/ElfReader.cc
+  src/EmuFs.cc
+  src/Event.cc
+  src/ExtraRegisters.cc
+  src/fast_forward.cc
+  src/FdTable.cc
+  src/FileMonitor.cc
+  src/Flags.cc
+  src/ftrace.cc
+  src/HasTaskSet.cc
+  src/ExportImportCheckpoints.cc
+  src/kernel_abi.cc
+  src/kernel_metadata.cc
+  src/log.cc
+  src/MagicSaveDataMonitor.cc
+  src/MmappedFileMonitor.cc
+  src/MonitoredSharedMemory.cc
+  src/Monkeypatcher.cc
+  src/PerfCounters.cc
+  src/PerfCounterBuffers.cc
+  src/PidFdMonitor.cc
+  src/processor_trace_check.cc
+  src/ProcFdDirMonitor.cc
+  src/ProcMemMonitor.cc
+  src/ProcStatMonitor.cc
+  src/RecordSession.cc
+  src/record_signal.cc
+  src/record_syscall.cc
+  src/RecordTask.cc
+  src/Registers.cc
+  src/remote_code_ptr.cc
+  src/ReplaySession.cc
+  src/replay_syscall.cc
+  src/ReplayTask.cc
+  src/ReplayTimeline.cc
+  src/ReturnAddressList.cc
+  src/Scheduler.cc
+  src/SeccompFilterRewriter.cc
+  src/Session.cc
+  src/StdioMonitor.cc
+  src/SysCpuMonitor.cc
+  src/TargetDescription.cc
+  src/Task.cc
+  src/ThreadGroup.cc
+  src/TraceeAttentionSet.cc
+  src/TraceField.cc
+  src/TraceFrame.cc
+  src/TraceStream.cc
+  src/VirtualPerfCounterMonitor.cc
+  src/util.cc
+  src/WaitManager.cc
+  src/WaitStatus.cc
+  ${CMAKE_CURRENT_BINARY_DIR}/rr_trace.capnp.c++
+  ${BLAKE_ARCH_DIR}/blake2b.c
+)
+
 set(RR_SOURCES
   src/AddressSpace.cc
   src/AutoRemoteSyscalls.cc
@@ -697,6 +765,7 @@ endif()
 
 if (x86ish)
   set(RR_SOURCES ${RR_SOURCES} src/test/x86/cpuid_loop.S)
+  set(RR_REPLAY_LIB_SOURCES ${RR_REPLAY_LIB_SOURCES} src/test/x86/cpuid_loop.S)
 endif()
 
 if (asan)
@@ -735,6 +804,39 @@ endif()
 add_executable(rr ${RR_SOURCES})
 target_compile_definitions(rr PRIVATE
   "FULL_LIBDIR=\"${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}\"")
+
+# Define static library target librr
+add_library(librr STATIC ${RR_REPLAY_LIB_SOURCES})
+set_property(TARGET librr PROPERTY CXX_STANDARD 23)  # override just for this target
+
+target_compile_definitions(librr PRIVATE
+  "FULL_LIBDIR=\"${CMAKE_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}\"")
+
+set_target_properties(librr PROPERTIES OUTPUT_NAME "rr")
+add_dependencies(librr Generated)
+set_source_files_properties(${RR_REPLAY_LIB_SOURCES} PROPERTIES COMPILE_FLAGS ${RR_FLAGS})
+target_include_directories(librr PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+# Link the same libraries as rr (except things specific to executables)
+target_link_libraries(librr
+  ${CMAKE_DL_LIBS}
+  ${ZLIB_LDFLAGS}
+  ${LIBBPF_LDFLAGS}
+  brotli
+)
+
+if(ZSTD)
+  target_link_libraries(librr ${LIBZSTD_LDFLAGS})
+endif()
+
+if(LIBRT)
+  target_link_libraries(librr ${LIBRT})
+endif()
+
+target_link_libraries(librr ${CAPNP_LDFLAGS})
+
+target_compile_definitions(librr PUBLIC RR_AS_LIBRARY)
+
 set_target_properties(rr PROPERTIES ENABLE_EXPORTS true)
 post_build_executable(rr)
 set(RR_BIN rr)
@@ -2247,10 +2349,10 @@ set(CPACK_BINARY_DIR "${PROJECT_BINARY_DIR}")
 # from the rr binary at build time.
 set(CPACK_STRIP_FILES FALSE)
 
-set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_LICENSE "${PROJECT_SOURCE_DIR}/LICENSE")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
   "Lightweight tool for recording and replaying execution of applications (trees of processes and threads)")
-set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
+set(CPACK_PACKAGE_DESCRIPTION_FILE "${PROJECT_SOURCE_DIR}/README.md")
 set(CPACK_PACKAGE_VENDOR "rr-debugger")
 
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "rr-debugger")
@@ -2267,7 +2369,7 @@ endif()
 # /usr/bin, etc, as files to be installed, but distros are finicky
 # about their specification.  We want to manually filter those paths
 # out of our install list but 2.8.7 also isn't capable of that.
-set(CPACK_RPM_USER_BINARY_SPECFILE "${CMAKE_SOURCE_DIR}/rr.spec")
+set(CPACK_RPM_USER_BINARY_SPECFILE "${PROJECT_SOURCE_DIR}/rr.spec")
 set(CPACK_RPM_PACKAGE_RELEASE 1)
 set(CPACK_RPM_PACKAGE_GROUP "Development/Debuggers")
 set(CPACK_RPM_PACKAGE_LICENSE "MIT and BSD")
