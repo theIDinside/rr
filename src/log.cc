@@ -461,6 +461,10 @@ FatalOstream::~FatalOstream() {
   dump_stack_and_abort();
 }
 
+#ifdef RR_AS_LIBRARY
+#define START_EMERGENCY_DEBUG(...)
+#else
+#define START_EMERGENCY_DEBUG(t) start_emergency_debug(t)
 static const int LAST_EVENT_COUNT = 20;
 
 static void dump_last_events(const TraceStream& trace) {
@@ -520,6 +524,7 @@ static void start_emergency_debug(Task* t) {
   emergency_debug(t);
   CLEAN_FATAL() << "Can't resume execution from invalid state";
 }
+#endif // RR_AS_LIBRARY
 
 EmergencyDebugOstream::EmergencyDebugOstream(bool cond, const Task* t,
                                              const char* file, int line,
@@ -539,7 +544,7 @@ EmergencyDebugOstream::~EmergencyDebugOstream() {
     log_stream() << endl;
     flush_log_stream();
     t->log_pending_events();
-    start_emergency_debug(t);
+    START_EMERGENCY_DEBUG(t);
   }
 }
 
