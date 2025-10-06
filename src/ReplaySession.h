@@ -207,6 +207,11 @@ public:
    * for replay to reach.
    */
   const TraceFrame& current_trace_frame() const { return trace_frame; }
+
+  /**
+   * The trace record that we've last moved on from.
+   */
+  const TraceFrame& last_replayed_trace_frame() const { return last_replayed; }
   /**
    * Time of the current frame
    */
@@ -425,6 +430,7 @@ private:
   std::shared_ptr<EmuFs> emu_fs;
   std::shared_ptr<ScopedFd> tracee_output_fd_;
   TraceReader trace_in;
+  TraceFrame last_replayed;
   TraceFrame trace_frame;
   ReplayTraceStep current_step;
   Ticks ticks_at_start_of_event;

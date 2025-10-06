@@ -135,6 +135,10 @@ const TraceFrame& ReplayTask::current_trace_frame() const {
   return session().current_trace_frame();
 }
 
+const TraceFrame& ReplayTask::last_replayed_trace_frame() const {
+  return session().last_replayed_trace_frame();
+}
+
 FrameTime ReplayTask::current_frame_time() const {
   return current_trace_frame().time();
 }
