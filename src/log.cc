@@ -462,7 +462,7 @@ FatalOstream::~FatalOstream() {
 }
 
 #ifdef RR_AS_LIBRARY
-#define START_EMERGENCY_DEBUG(...)
+#define START_EMERGENCY_DEBUG(...) std::terminate();
 #else
 #define START_EMERGENCY_DEBUG(t) start_emergency_debug(t)
 static const int LAST_EVENT_COUNT = 20;
