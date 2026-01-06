@@ -19,7 +19,7 @@ void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step);
 /**
  * Call this when |t| has just entered a syscall.
  */
-void rep_after_enter_syscall(ReplayTask* t);
+void rep_after_enter_syscall(ReplayTask* t, std::optional<pid_t>& task_created);
 
 /**
  * Process pending syscall. Call this when |t| is about to exit a syscall.

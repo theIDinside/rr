@@ -150,7 +150,8 @@ static bool syscall_shares_vm(Registers r)
   }
 }
 
-template <typename Arch> static void prepare_clone(ReplayTask* t) {
+template <typename Arch>
+static void prepare_clone(ReplayTask* t, std::optional<pid_t>& task_created) {
   const TraceFrame& trace_frame = t->current_trace_frame();
 
   // We're being called with the syscall entry event, so we can't inspect the result
@@ -267,6 +268,7 @@ template <typename Arch> static void prepare_clone(ReplayTask* t) {
       t->session().clone(t, clone_flags_to_task_flags(flags), params.stack,
                          params.tls, params.ctid, new_tid, rec_tid));
   new_task->own_namespace_rec_tid = tte.own_ns_tid();
+  task_created = new_tid;
 
   if (Arch::clone == t->regs().original_syscallno()) {
     /* FIXME: what if registers are non-null and contain an
@@ -968,7 +970,8 @@ static void process_init_buffers(ReplayTask* t, ReplayTraceStep* step) {
 static int non_negative_syscall(int sys) { return sys < 0 ? INT32_MAX : sys; }
 
 template <typename Arch>
-static void rep_after_enter_syscall_arch(ReplayTask* t) {
+static void rep_after_enter_syscall_arch(ReplayTask* t,
+                                         std::optional<pid_t>& task_created) {
   switch (non_negative_syscall(t->regs().original_syscallno())) {
     case Arch::write:
     case Arch::writev: {
@@ -981,7 +984,7 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
     case Arch::fork:
       // Create the new task now. It needs to exist before clone/fork/vfork
       // returns so that a ptracer can touch it during PTRACE_EVENT handling.
-      prepare_clone<Arch>(t);
+      prepare_clone<Arch>(t, task_created);
       break;
 
     case Arch::ptrace: {
@@ -1036,8 +1039,9 @@ static void rep_after_enter_syscall_arch(ReplayTask* t) {
   t->apply_all_data_records_from_trace();
 }
 
-void rep_after_enter_syscall(ReplayTask* t) {
-  RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t)
+void rep_after_enter_syscall(ReplayTask* t,
+                             std::optional<pid_t>& task_created) {
+  RR_ARCH_FUNCTION(rep_after_enter_syscall_arch, t->arch(), t, task_created)
 }
 
 void rep_prepare_run_to_syscall(ReplayTask* t, ReplayTraceStep* step) {

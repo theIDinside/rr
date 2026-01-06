@@ -668,7 +668,8 @@ static void emulate_syscall_entry(ReplayTask* t, const TraceFrame& frame,
  * occurred.
  */
 Completion ReplaySession::enter_syscall(ReplayTask* t,
-                                        const StepConstraints& constraints) {
+                                        const StepConstraints& constraints,
+                                        std::optional<pid_t>& task_created) {
   if (t->regs().matches(trace_frame.regs()) &&
       t->tick_count() == trace_frame.ticks()) {
     // We already entered the syscall via an ENTERING_SYSCALL_PTRACE
@@ -737,7 +738,7 @@ Completion ReplaySession::enter_syscall(ReplayTask* t,
   }
 
   if (current_trace_frame().event().Syscall().state == ENTERING_SYSCALL) {
-    rep_after_enter_syscall(t);
+    rep_after_enter_syscall(t, task_created);
   }
   return COMPLETE;
 }
@@ -1708,7 +1709,8 @@ Completion ReplaySession::advance_to_ticks_target(
  * more work.
  */
 Completion ReplaySession::try_one_trace_step(
-    ReplayTask* t, const StepConstraints& constraints) {
+    ReplayTask* t, const StepConstraints& constraints,
+    std::optional<pid_t>& task_created) {
   if (constraints.ticks_target > 0 && !trace_frame.event().has_ticks_slop() &&
       current_trace_frame().ticks() > constraints.ticks_target) {
     // Instead of doing this step, just advance to the ticks_target, since
@@ -1723,7 +1725,7 @@ Completion ReplaySession::try_one_trace_step(
     case TSTEP_RETIRE:
       return COMPLETE;
     case TSTEP_ENTER_SYSCALL:
-      return enter_syscall(t, constraints);
+      return enter_syscall(t, constraints, task_created);
     case TSTEP_EXIT_SYSCALL:
       return exit_syscall(t);
     case TSTEP_DETERMINISTIC_SIGNAL:
@@ -2056,7 +2058,7 @@ ReplayResult ReplaySession::replay_step(const StepConstraints& constraints) {
   result.break_status.task_context = TaskContext(t);
 
   /* Advance towards fulfilling |current_step|. */
-  Completion complete = try_one_trace_step(t, constraints);
+  Completion complete = try_one_trace_step(t, constraints, result.created_task);
   if (detected_transient_error_) {
     result.status = REPLAY_TRANSIENT_ERROR;
     return result;

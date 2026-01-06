@@ -126,6 +126,10 @@ struct ReplayResult {
   // one iteration to go. did_fast_forward may be false in this case if the
   // instruction executes exactly twice.
   bool incomplete_fast_forward;
+
+  // If this replay step creates a new task, we need to be able to report it
+  // reliably to a frontend consuming rr.
+  std::optional<pid_t> created_task{ std::nullopt };
 };
 
 /**
@@ -392,10 +396,12 @@ private:
   void advance_to_next_trace_frame();
   Completion emulate_signal_delivery(ReplayTask* oldtask);
   Completion try_one_trace_step(ReplayTask* t,
-                                const StepConstraints& step_constraints);
+                                const StepConstraints& step_constraints,
+                                std::optional<pid_t>& task_created);
   Completion cont_syscall_boundary(ReplayTask* t,
                                    const StepConstraints& constraints);
-  Completion enter_syscall(ReplayTask* t, const StepConstraints& constraints);
+  Completion enter_syscall(ReplayTask* t, const StepConstraints& constraints,
+                           std::optional<pid_t>& task_created);
   Completion exit_syscall(ReplayTask* t);
   Completion exit_task(ReplayTask* t);
   bool handle_unrecorded_cpuid_fault(ReplayTask* t,
